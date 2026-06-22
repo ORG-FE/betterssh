@@ -8,8 +8,8 @@ edition = "2021"
 rust-version = "1.75"
 license = "MIT"
 authors = ["c0redev"]
-homepage = "https://project-fe.dev"
-repository = "https://project-fe.dev/betterssh"
+homepage = "https://github.com/ORG-FE/betterssh"
+repository = "https://github.com/ORG-FE/betterssh"
 
 [workspace.dependencies]
 ratatui = "0.28"
