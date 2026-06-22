@@ -1,0 +1,42 @@
+# betterssh config
+
+[settings]
+keepalive_secs = 30
+term_cols = 120
+term_rows = 32
+term_type = "xterm-256color"
+log_lines = 1000
+
+[[host]]
+name = "home"
+host = "192.168.1.10"
+port = 22
+user = "root"
+group = "lan"
+tags = ["linux", "personal"]
+keepalive = 30
+
+[[host.identity]]
+type = "key"
+path = "~/.ssh/id_ed25519"
+
+[[host]]
+name = "prod-1"
+host = "prod1.example.com"
+port = 22
+user = "deploy"
+group = "prod"
+tags = ["nginx", "k8s"]
+keepalive = 15
+
+[[host.identity]]
+type = "key"
+path = "~/.ssh/work_ed25519"
+
+[[host]]
+name = "vps-fra"
+host = "vps.example.net"
+port = 2222
+user = "admin"
+jump = "prod-1"
+tags = ["vps"]

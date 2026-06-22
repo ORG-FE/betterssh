@@ -1,0 +1,40 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/ssh", "crates/tui", "crates/cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+authors = ["c0redev"]
+homepage = "https://project-fe.dev"
+repository = "https://project-fe.dev/betterssh"
+
+[workspace.dependencies]
+ratatui = "0.28"
+crossterm = "0.28"
+tokio = { version = "1.39", features = ["full"] }
+tokio-util = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+anyhow = "1"
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+russh = "0.44"
+russh-keys = "0.44"
+async-trait = "0.1"
+dirs = "5"
+unicode-width = "0.1"
+vt100 = "0.16"
+parking_lot = "0.12"
+chrono = { version = "0.4", features = ["serde", "clock"] }
+rustyline = "14"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

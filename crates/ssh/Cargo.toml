@@ -1,0 +1,23 @@
+[package]
+name = "betterssh-ssh"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+betterssh-core = { path = "../core" }
+russh = { workspace = true }
+russh-keys = { workspace = true }
+russh-sftp = "2.3"
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+async-trait = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
