@@ -188,6 +188,17 @@ pub enum EditField {
     Forwards,
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum UpdateStatus {
+    #[default]
+    Idle,
+    Checking,
+    Available,
+    Downloading,
+    Done,
+    Failed(String),
+}
+
 pub enum MsgLevel {
     Info,
     Warn,
@@ -270,6 +281,11 @@ pub struct App {
     
     pub sftp_rx: Option<mpsc::UnboundedReceiver<Vec<SftpEntry>>>,
     pub sftp_result_rx: Option<mpsc::UnboundedReceiver<Result<(), String>>>,
+
+    pub update_status: UpdateStatus,
+    pub update_latest_version: String,
+    pub update_error: Option<String>,
+    pub update_dismissed: bool,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -512,6 +528,11 @@ impl App {
             last_remote_metrics_collect: std::time::Instant::now() - std::time::Duration::from_secs(10),
             sftp_rx: None,
             sftp_result_rx: None,
+
+            update_status: UpdateStatus::Idle,
+            update_latest_version: String::new(),
+            update_error: None,
+            update_dismissed: false,
         }
     }
 

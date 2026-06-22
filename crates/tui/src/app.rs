@@ -1,7 +1,8 @@
 use crate::pty_render::TerminalView;
 use crate::settings::{draw_settings, SettingsAction, SettingsFocus};
-use crate::state::{ActiveForward, App, AppMode, EditField, Focus, HostStatus, MsgLevel, PendingDial, PromptKind, RemoteMetrics, Session, SessionStatus, SftpEntry, SftpPane, SftpState};
+use crate::state::{ActiveForward, App, AppMode, EditField, Focus, HostStatus, MsgLevel, PendingDial, PromptKind, RemoteMetrics, Session, SessionStatus, SftpEntry, SftpPane, SftpState, UpdateStatus};
 use crate::theme::{self, Theme};
+use crate::update;
 use crate::view::{
     draw_host_list, draw_prompt, draw_sftp, draw_status_bar,
     draw_toasts, popup_area,
@@ -56,6 +57,7 @@ impl App {
     ) -> Result<()> {
         self.settings = settings.clone();
         self.theme = theme::load_theme(&settings.theme);
+        update::check_latest();
         let tick = Duration::from_millis(50);
         let mut last = Instant::now();
         let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<Cmd>();
@@ -238,10 +240,11 @@ impl App {
                     if let AppMode::Prompt { kind, buffer, cursor } = &self.mode {
                         self.render_prompt_overlay(f, area, theme, kind, buffer, *cursor);
                     }
-                    if matches!(self.focus, Focus::CmdPalette) {
-                        self.render_palette(f, area, theme);
-                    }
-                    return;
+            if matches!(self.focus, Focus::CmdPalette) {
+                self.render_palette(f, area, theme);
+            }
+            self.render_update_banner(f, area, theme);
+            return;
                 }
             }
         }
@@ -332,6 +335,7 @@ impl App {
                 ("i", "import"),
                 ("s", "save"),
                 ("[]", "swp"),
+                ("u", "update"),
                 ("q", "quit"),
             ],
             Focus::Terminal => &[
@@ -365,6 +369,8 @@ impl App {
         };
         let capture_indicator = if self.capture_mode { Some("CAPTURE") } else { None };
         draw_status_bar(f, status_bar_area, theme, hints, capture_indicator.or(self.status_msg.as_deref()));
+
+        self.render_update_banner(f, area, theme);
 
         self.toasts.retain(|t| std::time::Instant::now() < t.until);
         draw_toasts(f, area, theme, &self.toasts);
@@ -776,6 +782,95 @@ impl App {
         ]
     }
 
+    fn render_update_banner(&self, f: &mut Frame, area: Rect, theme: &Theme) {
+        if self.update_dismissed {
+            return;
+        }
+        let (title, lines, is_err) = match &self.update_status {
+            UpdateStatus::Available => {
+                let ver = &self.update_latest_version;
+                let cur = update::current_version();
+                (
+                    " Update Available ",
+                    vec![
+                        Line::from(vec![
+                            Span::raw("  "),
+                            Span::styled("\u{2726}", Style::default().fg(theme.accent)),
+                            Span::raw(format!(" v{} ready  ", ver)),
+                            Span::styled(format!("(you have v{})", cur), Style::default().fg(theme.dim)),
+                        ]),
+                        Line::from(vec![
+                            Span::raw("  "),
+                            Span::styled(" u ", Style::default().fg(theme.sel_bg).bg(theme.sel_fg)),
+                            Span::raw(" install  "),
+                            Span::styled(" Esc ", Style::default().fg(theme.sel_bg).bg(theme.sel_fg)),
+                            Span::raw(" dismiss"),
+                        ]),
+                    ],
+                    false,
+                )
+            }
+            UpdateStatus::Downloading => (
+                " Downloading Update ",
+                vec![Line::from(Span::styled(
+                    "  \u{25cf} downloading...",
+                    Style::default().fg(theme.warn),
+                ))],
+                false,
+            ),
+            UpdateStatus::Done => (
+                " Update Installed ",
+                vec![
+                    Line::from(vec![
+                        Span::styled("  \u{2713} ", Style::default().fg(theme.good)),
+                        Span::styled(format!("v{}", self.update_latest_version), Style::default().fg(theme.accent)),
+                        Span::raw(" installed! Restart betterssh to use."),
+                    ]),
+                ],
+                false,
+            ),
+            UpdateStatus::Failed(e) => (
+                " Update Failed ",
+                vec![Line::from(Span::styled(
+                    format!("  \u{2717} {}", e),
+                    Style::default().fg(theme.bad),
+                ))],
+                true,
+            ),
+            _ => return,
+        };
+
+        let h = lines.len() as u16 + 2;
+        let w = area.width.min(58);
+        let popup = Rect {
+            x: (area.width - w) / 2,
+            y: 0,
+            width: w,
+            height: h,
+        };
+        let border_c = if is_err { theme.bad } else { theme.accent };
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(border_c))
+            .title(Span::styled(title, Style::default().fg(border_c).add_modifier(Modifier::BOLD)))
+            .style(Style::default().bg(theme.surface));
+        let inner = block.inner(popup);
+        f.render_widget(Clear, popup);
+        f.render_widget(block, popup);
+        for (i, line) in lines.iter().enumerate() {
+            f.render_widget(
+                Paragraph::new(line.clone()).style(Style::default().bg(theme.surface)),
+                Rect {
+                    x: inner.x,
+                    y: inner.y + i as u16,
+                    width: inner.width,
+                    height: 1,
+                },
+            );
+        }
+    }
+
     fn handle_event(&mut self, evt: Event, cmd_tx: &mpsc::UnboundedSender<Cmd>, settings: &Arc<Settings>) {
         match evt {
             Event::Key(k) => {
@@ -910,9 +1005,35 @@ impl App {
                         return;
                     }
                     "open_settings" => { self.open_settings(); return; }
+                    "update" => {
+                        update::do_install();
+                        return;
+                    }
                     _ => {} 
                 }
             }
+        }
+
+        
+        if matches!(self.update_status, UpdateStatus::Available) && !self.update_dismissed {
+            match k.code {
+                KeyCode::Char('u') | KeyCode::Char('U') => {
+                    update::do_install();
+                    return;
+                }
+                KeyCode::Esc => {
+                    self.update_dismissed = true;
+                    self.update_status = UpdateStatus::Idle;
+                    return;
+                }
+                _ => {}
+            }
+        }
+        if matches!(self.update_status, UpdateStatus::Done | UpdateStatus::Failed(_))
+            && k.code == KeyCode::Esc
+        {
+            self.update_status = UpdateStatus::Idle;
+            return;
         }
 
         
@@ -1667,6 +1788,10 @@ impl App {
             ("Quit".into(), "q".into()),
         ];
         
+        if matches!(self.update_status, UpdateStatus::Available) && !self.update_dismissed {
+            items.push(("Update".into(), "update".into()));
+        }
+        
         for m in &self.settings.macros {
             let label = format!("Run: {}", m.name);
             items.push((label, format!("macro:{}", m.name)));
@@ -1724,6 +1849,7 @@ impl App {
                     "ctrl+b" => KeyEvent::new(KeyCode::Char('b'), KeyModifiers::CONTROL),
                     "alt+m" => KeyEvent::new(KeyCode::Char('m'), KeyModifiers::ALT),
                     "q" => KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE),
+                    "update" => KeyEvent::new(KeyCode::Char('u'), KeyModifiers::NONE),
                     _ => return,
                 };
                 self.handle_key(mapped, cmd_tx, settings);
@@ -2410,6 +2536,24 @@ impl App {
     }
 
     fn on_tick(&mut self) {
+        
+        self.update_status = if update::is_downloading() {
+            UpdateStatus::Downloading
+        } else if update::is_done() {
+            UpdateStatus::Done
+        } else if update::is_available() && !self.update_dismissed {
+            UpdateStatus::Available
+        } else if let Some(e) = update::error() {
+            UpdateStatus::Failed(e)
+        } else if update::is_checking() {
+            UpdateStatus::Checking
+        } else {
+            UpdateStatus::Idle
+        };
+        if let Some(v) = update::latest_version() {
+            self.update_latest_version = v.to_string();
+        }
+
         
         if let Some((cols, rows)) = self.pending_resize.take() {
             for s in &mut self.sessions {
