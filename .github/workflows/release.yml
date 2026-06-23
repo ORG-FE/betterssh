@@ -45,11 +45,15 @@ jobs:
           RELEASE_VERSION: ${{ github.ref_name }}
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
-      - name: Upload binary
-        uses: actions/upload-artifact@v5
+      - name: Prepare binary
+        run: |
+          cp target/${{ matrix.target }}/release/betterssh${{ runner.os == 'Windows' && '.exe' || '' }} \
+            betterssh-${{ matrix.target }}${{ runner.os == 'Windows' && '.exe' || '' }}
+
+      - uses: actions/upload-artifact@v5
         with:
           name: betterssh-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/betterssh${{ runner.os == 'Windows' && '.exe' || '' }}
+          path: betterssh-${{ matrix.target }}${{ runner.os == 'Windows' && '.exe' || '' }}
 
   release:
     name: Create Release
@@ -63,6 +67,9 @@ jobs:
         with:
           pattern: betterssh-*
           merge-multiple: true
+
+      - name: List downloaded artifacts
+        run: ls -la
 
       - name: Make executable (linux/macos)
         run: chmod +x betterssh-*
