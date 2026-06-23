@@ -259,3 +259,133 @@ fn ansi_palette(i: u8) -> Color {
         _ => Color::Reset,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theme::Theme;
+
+    #[test]
+    fn terminal_view_new() {
+        let tv = TerminalView::new(80, 24);
+        assert_eq!(tv.cols, 80);
+        assert_eq!(tv.rows, 24);
+        assert_eq!(tv.scroll_offset, 0);
+    }
+
+    #[test]
+    fn terminal_view_new_minimum() {
+        let tv = TerminalView::new(1, 1);
+        assert!(tv.cols >= 2);
+        assert!(tv.rows >= 2);
+    }
+
+    #[test]
+    fn terminal_view_cursor() {
+        let tv = TerminalView::new(80, 24);
+        let (col, row) = tv.cursor();
+        assert_eq!(col, 0);
+        assert_eq!(row, 0);
+    }
+
+    #[test]
+    fn terminal_view_feed_text() {
+        let mut tv = TerminalView::new(80, 24);
+        tv.feed(b"hello");
+        let lines = tv.raw_lines();
+        assert!(lines[0].starts_with("hello"));
+    }
+
+    #[test]
+    fn terminal_view_feed_newline() {
+        let mut tv = TerminalView::new(80, 24);
+        tv.feed(b"line1\nline2\n");
+        let lines = tv.raw_lines();
+        assert!(lines.iter().any(|l| l.trim().starts_with("line1")));
+        assert!(lines.iter().any(|l| l.trim().starts_with("line2")));
+    }
+
+    #[test]
+    fn terminal_view_resize() {
+        let mut tv = TerminalView::new(80, 24);
+        tv.resize(120, 40);
+        assert_eq!(tv.cols, 120);
+        assert_eq!(tv.rows, 40);
+    }
+
+    #[test]
+    fn terminal_view_resize_noop() {
+        let mut tv = TerminalView::new(80, 24);
+        tv.resize(80, 24);
+        assert_eq!(tv.cols, 80);
+    }
+
+    #[test]
+    fn terminal_view_resize_minimum() {
+        let mut tv = TerminalView::new(80, 24);
+        tv.resize(1, 1);
+        assert!(tv.cols >= 2);
+        assert!(tv.rows >= 2);
+    }
+
+    #[test]
+    fn terminal_view_scroll() {
+        let mut tv = TerminalView::new(80, 24);
+        assert_eq!(tv.scroll_offset, 0);
+        tv.scroll_up(5);
+        assert_eq!(tv.scroll_offset, 0);
+        tv.scroll_down(3);
+        assert_eq!(tv.scroll_offset, 0);
+    }
+
+    #[test]
+    fn terminal_view_scroll_boundaries() {
+        let mut tv = TerminalView::new(80, 24);
+        tv.scroll_up(u16::MAX);
+        tv.scroll_down(u16::MAX);
+        assert_eq!(tv.scroll_offset, 0);
+    }
+
+    #[test]
+    fn terminal_view_cols_rows() {
+        let tv = TerminalView::new(100, 40);
+        assert_eq!(tv.cols(), 100);
+        assert_eq!(tv.rows(), 40);
+    }
+
+    #[test]
+    fn terminal_view_render_returns_lines() {
+        let mut tv = TerminalView::new(80, 24);
+        tv.feed(b"test content\n");
+        let theme = Theme::default();
+        let lines = tv.render(&theme);
+        assert!(!lines.is_empty());
+        assert_eq!(lines.len(), 24);
+    }
+
+    #[test]
+    fn terminal_view_raw_lines() {
+        let mut tv = TerminalView::new(80, 24);
+        tv.feed(b"abc\n");
+        let lines = tv.raw_lines();
+        assert_eq!(lines.len(), 24);
+        assert!(lines[0].contains("abc"));
+    }
+
+    #[test]
+    fn terminal_view_feed_ansi() {
+        let mut tv = TerminalView::new(80, 24);
+        tv.feed(b"\x1b[31mred\x1b[0m");
+        let lines = tv.raw_lines();
+        assert!(lines[0].contains("red"));
+    }
+
+    #[test]
+    fn terminal_view_clear() {
+        let mut tv = TerminalView::new(80, 24);
+        tv.feed(b"before");
+        tv.feed(b"\x1b[2J");
+        let lines = tv.raw_lines();
+        assert!(lines.iter().all(|l| l.trim().is_empty()));
+    }
+}

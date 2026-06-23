@@ -480,3 +480,144 @@ const THEME_KEYS: &[&str] = &[
     "warn", "bad", "sel_bg", "sel_fg", "surface", "overlay", "cpu_low", "cpu_mid", "cpu_high",
     "mem_low", "mem_mid", "mem_high",
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hex_valid() {
+        assert_eq!(hex("#ff0000"), Color::Rgb(255, 0, 0));
+        assert_eq!(hex("#00ff00"), Color::Rgb(0, 255, 0));
+        assert_eq!(hex("#0000ff"), Color::Rgb(0, 0, 255));
+    }
+
+    #[test]
+    fn hex_invalid() {
+        assert_eq!(hex(""), Color::Rgb(0, 0, 0));
+        assert_eq!(hex("xyz"), Color::Rgb(0, 0, 0));
+        assert_eq!(hex("#ff"), Color::Rgb(0, 0, 0));
+    }
+
+    #[test]
+    fn hex_without_hash() {
+        assert_eq!(hex("ff0000"), Color::Rgb(255, 0, 0));
+    }
+
+    #[test]
+    fn to_hex_rgb() {
+        assert_eq!(to_hex(Color::Rgb(255, 0, 0)), "#ff0000");
+        assert_eq!(to_hex(Color::Rgb(0, 128, 255)), "#0080ff");
+    }
+
+    #[test]
+    fn to_hex_non_rgb() {
+        assert_eq!(to_hex(Color::Reset), "#000000");
+    }
+
+    #[test]
+    fn default_theme() {
+        let t = Theme::default();
+        assert_eq!(t.name, "default");
+        assert_eq!(t.bg, Color::Rgb(0x0d, 0x11, 0x16));
+        assert_eq!(t.txt, Color::Rgb(0xc9, 0xd1, 0xd9));
+    }
+
+    #[test]
+    fn builtin_themes_count() {
+        let themes = builtin_themes();
+        assert_eq!(themes.len(), 10);
+    }
+
+    #[test]
+    fn builtin_themes_have_unique_names() {
+        let themes = builtin_themes();
+        let mut names: Vec<&str> = themes.iter().map(|t| t.name.as_str()).collect();
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), themes.len());
+    }
+
+    #[test]
+    fn load_builtin_theme() {
+        let t = load_theme("dracula");
+        assert_eq!(t.name, "dracula");
+        assert_eq!(t.bg, Color::Rgb(0x1e, 0x1e, 0x2e));
+    }
+
+    #[test]
+    fn load_nonexistent_theme_returns_default() {
+        let t = load_theme("nonexistent_theme_xyz");
+        assert_eq!(t.name, "default");
+    }
+
+    #[test]
+    fn list_theme_names_includes_builtins() {
+        let names = list_theme_names();
+        assert!(names.contains(&"default".to_string()));
+        assert!(names.contains(&"dracula".to_string()));
+        assert!(names.contains(&"gruvbox".to_string()));
+        assert!(names.contains(&"nord".to_string()));
+        assert!(names.contains(&"catppuccin".to_string()));
+    }
+
+    #[test]
+    fn theme_to_fields_contains_all_keys() {
+        let t = Theme::default();
+        let fields = t.to_fields();
+        assert!(fields.iter().any(|(k, _)| *k == "bg"));
+        assert!(fields.iter().any(|(k, _)| *k == "txt"));
+        assert!(fields.iter().any(|(k, _)| *k == "accent"));
+        assert_eq!(fields.len(), 22);
+    }
+
+    #[test]
+    fn theme_roundtrip() {
+        let t1 = dracula();
+        let fields = t1.to_fields();
+        let t2 = Theme::from_fields("test", &fields.iter().map(|(k, v)| (*k, v.as_str())).collect::<Vec<_>>());
+        assert_eq!(t1.bg, t2.bg);
+        assert_eq!(t1.txt, t2.txt);
+        assert_eq!(t1.accent, t2.accent);
+        assert_eq!(t2.name, "test");
+    }
+
+    #[test]
+    fn dracula_theme() {
+        let t = dracula();
+        assert_eq!(t.name, "dracula");
+        assert_eq!(t.bg, Color::Rgb(0x1e, 0x1e, 0x2e));
+    }
+
+    #[test]
+    fn gruvbox_theme() {
+        let t = gruvbox();
+        assert_eq!(t.name, "gruvbox");
+        assert_eq!(t.bg, Color::Rgb(0x28, 0x28, 0x28));
+    }
+
+    #[test]
+    fn nord_theme() {
+        let t = nord();
+        assert_eq!(t.name, "nord");
+        assert_eq!(t.bg, Color::Rgb(0x2e, 0x34, 0x40));
+    }
+
+    #[test]
+    fn catppuccin_theme_name() {
+        let t = catppuccin();
+        assert_eq!(t.name, "catppuccin");
+    }
+
+    #[test]
+    fn tokyo_night_theme_name() {
+        let t = tokyo_night();
+        assert_eq!(t.name, "tokyo-night");
+    }
+
+    #[test]
+    fn everforest_theme_name() {
+        let t = everforest();
+        assert_eq!(t.name, "everforest");
+    }
+}

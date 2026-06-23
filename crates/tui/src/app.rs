@@ -1,8 +1,8 @@
 use crate::pty_render::TerminalView;
 use crate::settings::{draw_settings, SettingsAction, SettingsFocus};
 use crate::state::{
-    ActiveForward, App, AppMode, EditField, Focus, HostStatus, MsgLevel, PendingDial, PromptKind,
-    RemoteMetrics, Session, SessionStatus, SftpEntry, SftpPane, SftpState, UpdateStatus,
+    ActiveForward, App, AppMode, BatchResult, EditField, Focus, HostStatus, MsgLevel, PendingDial,
+    PromptKind, RemoteMetrics, Session, SessionStatus, SftpEntry, SftpPane, SftpState, UpdateStatus,
 };
 use crate::theme::{self, Theme};
 use crate::update;
@@ -292,6 +292,7 @@ impl App {
             &self.host_status,
             self.group_mode,
             &self.collapsed_groups,
+            &self.batch_selected,
         );
 
         let term_area = body_chunks[1];
@@ -347,6 +348,10 @@ impl App {
             self.render_palette(f, area, theme);
         }
 
+        if matches!(self.focus, Focus::History) {
+            self.render_history_overlay(f, area, theme);
+        }
+
         let hints: &[(&str, &str)] = match self.focus {
             Focus::Hosts => &[
                 ("Enter", "connect"),
@@ -362,6 +367,7 @@ impl App {
                 ("q", "quit"),
             ],
             Focus::Terminal => &[
+                ("Ctrl+R", "hist"),
                 ("Ctrl+F", "search"),
                 ("Ctrl+N", "new"),
                 ("Ctrl+W", "close"),
@@ -381,6 +387,7 @@ impl App {
             Focus::Search => &[("Enter", "apply"), ("Esc", "cancel")],
             Focus::TermSearch => &[("Enter/Down", "next"), ("Up", "prev"), ("Esc", "exit")],
             Focus::CmdPalette => &[("Enter", "run"), ("Esc", "close")],
+            Focus::History => &[("Enter", "send"), ("↑↓", "nav"), ("Esc", "close")],
             Focus::Prompt => &[("Enter", "ok"), ("Esc", "cancel")],
             Focus::Settings => &[
                 ("↑↓", "navigate"),
@@ -835,6 +842,87 @@ impl App {
                 Span::styled(format!("[{}]", key), Style::default().fg(theme.dim)),
             ]);
             list_items.push(ListItem::new(line));
+        }
+        let list = List::new(list_items).style(Style::default().bg(theme.panel));
+        f.render_widget(list, chunks[1]);
+    }
+
+    fn render_history_overlay(&self, f: &mut Frame, area: Rect, theme: &Theme) {
+        let Some(idx) = self.active_session else { return };
+        let Some(sess) = self.sessions.get(idx) else { return };
+
+        let w = 60.min(area.width.saturating_sub(4));
+        let h = (sess.history.matched.len() as u16 + 4).min(16).max(4);
+        let popup = Rect {
+            x: (area.width.saturating_sub(w)) / 2,
+            y: area.y.saturating_add(1),
+            width: w,
+            height: h,
+        };
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(theme.accent))
+            .title(Span::styled(
+                " Command History ",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))
+            .style(Style::default().bg(theme.panel));
+        let inner = block.inner(popup);
+        f.render_widget(Clear, popup);
+        f.render_widget(block, popup);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Min(1)])
+            .split(inner);
+
+        let filter_text = format!("> {}  ({} matches)", sess.history.filter, sess.history.matched.len());
+        let filter_para = Paragraph::new(Line::from(Span::styled(
+            filter_text,
+            Style::default().fg(theme.txt),
+        )))
+        .style(Style::default().bg(theme.surface));
+        f.render_widget(filter_para, chunks[0]);
+
+        let mut list_items: Vec<ListItem> = Vec::new();
+        let max_w = inner.width.saturating_sub(4) as usize;
+        for (i, &entry_idx) in sess.history.matched.iter().enumerate() {
+            if i >= 50 {
+                break;
+            }
+            if let Some(entry) = sess.history.entries.get(entry_idx) {
+                let truncated = if entry.chars().count() > max_w {
+                    let t: String = entry.chars().take(max_w.saturating_sub(1)).collect();
+                    format!("{}…", t)
+                } else {
+                    entry.clone()
+                };
+                let selected = i == sess.history.selected;
+                let style = if selected {
+                    Style::default().bg(theme.sel_bg).fg(theme.sel_fg)
+                } else {
+                    Style::default().fg(theme.txt)
+                };
+                let line = Line::from(vec![
+                    Span::styled(format!(" {} ", if selected { ">" } else { " " }), style),
+                    Span::styled(truncated, style),
+                ]);
+                list_items.push(ListItem::new(line));
+            }
+        }
+        if list_items.is_empty() {
+            let empty_msg = if sess.history.entries.is_empty() {
+                " no history yet"
+            } else {
+                " no matches"
+            };
+            list_items.push(ListItem::new(Line::from(Span::styled(
+                empty_msg,
+                Style::default().fg(theme.dim),
+            ))));
         }
         let list = List::new(list_items).style(Style::default().bg(theme.panel));
         f.render_widget(list, chunks[1]);
@@ -1455,6 +1543,19 @@ impl App {
                 return;
             }
 
+            if !self.capture_mode
+                && k.modifiers.contains(KeyModifiers::CONTROL)
+                && k.code == KeyCode::Char('r')
+            {
+                if let Some(sess) = self.sessions.get_mut(idx) {
+                    sess.history.filter.clear();
+                    sess.history.update_filter();
+                    sess.history.selected = 0;
+                    self.focus = Focus::History;
+                }
+                return;
+            }
+
             if self.capture_mode {
                 if let Some(sess) = self.sessions.get_mut(idx) {
                     let bytes = key_to_bytes(k);
@@ -1472,6 +1573,16 @@ impl App {
                 if bytes.is_empty() {
                     tracing::debug!(?k, "key_to_bytes returned empty");
                 } else {
+                    if bytes == b"\r" {
+                        let (_, row) = sess.view.cursor();
+                        let raw = sess.view.raw_lines();
+                        if let Some(line) = raw.get(row as usize) {
+                            let cmd = line.trim().to_string();
+                            if !cmd.is_empty() {
+                                sess.history.push(cmd);
+                            }
+                        }
+                    }
                     tracing::debug!(?k, bytes = %bytes.iter().map(|b| format!("\\x{:02x}", b)).collect::<Vec<_>>().join(""), "sending to ssh");
                     if let Some(tx) = sess.cmd_tx.as_ref() {
                         let _ = tx.send(SessionCmd::Send(bytes));
@@ -1517,6 +1628,10 @@ impl App {
             self.handle_term_search_key(k, cmd_tx, settings);
             return;
         }
+        if matches!(self.focus, Focus::History) {
+            self.handle_history_key(k, cmd_tx, settings);
+            return;
+        }
         if matches!(self.focus, Focus::CmdPalette) {
             self.handle_palette_key(k, cmd_tx, settings);
             return;
@@ -1528,6 +1643,7 @@ impl App {
             Focus::Prompt => {}
             Focus::Search => {}
             Focus::TermSearch => {}
+            Focus::History => {}
             Focus::CmdPalette => {}
             Focus::Settings => self.handle_settings_key(k),
         }
@@ -1874,6 +1990,25 @@ impl App {
                     };
                 }
             }
+            (KeyCode::Char(' '), _) => {
+                if let Some(h) = self.selected_host() {
+                    let name = h.name.clone();
+                    if self.batch_selected.contains(&name) {
+                        self.batch_selected.remove(&name);
+                    } else {
+                        self.batch_selected.insert(name);
+                    }
+                }
+            }
+            (KeyCode::Char('x'), _) => {
+                if !self.batch_selected.is_empty() {
+                    self.mode = AppMode::Prompt {
+                        kind: PromptKind::BatchCommand,
+                        buffer: String::new(),
+                        cursor: 0,
+                    };
+                }
+            }
             (KeyCode::Char('i'), _) => {
                 let _ = self.import_ssh_config();
             }
@@ -1941,6 +2076,57 @@ impl App {
             }
             KeyCode::Char(c) => {
                 self.filter.push(c);
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_history_key(
+        &mut self,
+        k: KeyEvent,
+        _cmd_tx: &mpsc::UnboundedSender<Cmd>,
+        _settings: &Arc<Settings>,
+    ) {
+        let Some(idx) = self.active_session else { return };
+        let Some(sess) = self.sessions.get_mut(idx) else { return };
+
+        match k.code {
+            KeyCode::Esc => {
+                self.focus = Focus::Terminal;
+            }
+            KeyCode::Enter => {
+                if let Some(cmd) = sess.history.selected() {
+                    let cmd = cmd.to_string();
+                    if let Some(tx) = sess.cmd_tx.as_ref() {
+                        let mut bytes = cmd.into_bytes();
+                        bytes.push(b'\n');
+                        let _ = tx.send(SessionCmd::Send(bytes));
+                    }
+                    sess.history.filter.clear();
+                    sess.history.update_filter();
+                }
+                self.focus = Focus::Terminal;
+            }
+            KeyCode::Up => {
+                if !sess.history.matched.is_empty() {
+                    sess.history.selected = sess.history.selected.saturating_sub(1);
+                }
+            }
+            KeyCode::Down => {
+                if !sess.history.matched.is_empty() {
+                    let next = sess.history.selected + 1;
+                    if next < sess.history.matched.len() {
+                        sess.history.selected = next;
+                    }
+                }
+            }
+            KeyCode::Backspace => {
+                sess.history.filter.pop();
+                sess.history.update_filter();
+            }
+            KeyCode::Char(c) => {
+                sess.history.filter.push(c);
+                sess.history.update_filter();
             }
             _ => {}
         }
@@ -2266,6 +2452,39 @@ impl App {
                     self.status_msg = Some(format!("deleted '{}'", host));
                 }
                 self.mode = AppMode::Browsing;
+            }
+            PromptKind::BatchCommand => {
+                let cmd = value;
+                let selected: Vec<String> = self.batch_selected.iter().cloned().collect();
+                let count = selected.len();
+                self.mode = AppMode::Browsing;
+
+                if cmd.is_empty() || selected.is_empty() {
+                    return;
+                }
+
+                self.batch_results.clear();
+                for host_name in &selected {
+                    self.batch_results.push(BatchResult::Pending {
+                        host: host_name.clone(),
+                    });
+                }
+
+                let (tx, rx) = mpsc::unbounded_channel();
+                self.batch_rx = Some(rx);
+
+                for host_name in selected {
+                    if let Some(h) = self.hosts.iter().find(|h| h.name == host_name).cloned() {
+                        let cmd = cmd.clone();
+                        let tx = tx.clone();
+                        tokio::spawn(async move {
+                            let _ = tx.send(exec_single(&h, &cmd).await);
+                        });
+                    }
+                }
+                drop(tx);
+
+                self.status_msg = Some(format!("batch exec: {} host(s)", count));
             }
             PromptKind::MasterPassword => {
                 let master_pwd = value;
@@ -2902,6 +3121,8 @@ impl App {
             self.term_rows = rows.max(5);
         }
 
+        self.drain_batch_results();
+
         self.collect_metrics();
 
         let mut new_toasts: Vec<(String, MsgLevel)> = Vec::new();
@@ -2972,6 +3193,33 @@ impl App {
         for (text, level) in new_toasts {
             self.push_toast(text, level);
         }
+    }
+
+    fn drain_batch_results(&mut self) {
+        let rx = match &mut self.batch_rx {
+            Some(rx) => rx,
+            None => return,
+        };
+        while let Ok(result) = rx.try_recv() {
+            let host = result.host().to_string();
+            if let Some(entry) = self.batch_results.iter_mut().find(|r| r.host() == host) {
+                *entry = result;
+            }
+        }
+        if self.batch_results.iter().any(|r| matches!(r, BatchResult::Pending { .. })) {
+            return;
+        }
+        if self.batch_results.is_empty() {
+            return;
+        }
+        let ok = self
+            .batch_results
+            .iter()
+            .filter(|r| matches!(r, BatchResult::Success { .. }))
+            .count();
+        let failed = self.batch_results.len() - ok;
+        self.status_msg = Some(format!("batch done: {ok} ok, {failed} failed"));
+        self.batch_rx = None;
     }
 
     async fn handle_cmd(&mut self, cmd: Cmd, _settings: &Arc<Settings>) {
@@ -3929,6 +4177,7 @@ fn prompt_label(kind: &PromptKind, _buf: &str) -> String {
         PromptKind::KeybindingNew => "New binding (action = key)".into(),
         PromptKind::MacroName { .. } => "Macro name".into(),
         PromptKind::MacroCmds { name, .. } => format!("Commands for '{}' (; sep)", name),
+        PromptKind::BatchCommand => "Command to exec on selected hosts".into(),
     }
 }
 
@@ -4191,6 +4440,24 @@ fn build_opts(h: &Host) -> ConnectOpts {
         keepalive_secs: h.keepalive,
         jump: Vec::new(),
         use_agent: h.identity.iter().any(|i| matches!(i, Identity::Agent)),
+    }
+}
+
+async fn exec_single(h: &Host, cmd: &str) -> BatchResult {
+    let opts = build_opts(h);
+    let host = h.name.clone();
+    match betterssh_ssh::client::connect(&opts).await {
+        Ok((handle, _events, _rf)) => match exec(&handle, cmd).await {
+            Ok(output) => BatchResult::Success { host, output },
+            Err(e) => BatchResult::Failed {
+                host,
+                error: format!("{e}"),
+            },
+        },
+        Err(e) => BatchResult::Failed {
+            host,
+            error: format!("connect: {e}"),
+        },
     }
 }
 

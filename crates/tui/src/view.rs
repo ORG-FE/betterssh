@@ -22,6 +22,7 @@ pub fn draw_host_list(
     host_status: &HashMap<String, HostStatus>,
     group_mode: bool,
     collapsed_groups: &HashSet<String>,
+    batch_selected: &HashSet<String>,
 ) {
     let mut filtered: Vec<&Host> = if query.is_empty() {
         hosts.iter().collect()
@@ -77,8 +78,13 @@ pub fn draw_host_list(
                 HostStatus::Dead(_) => ("\u{2715}", theme.bad),
                 HostStatus::Unknown => ("\u{25cb}", theme.dim),
             };
+            let checked = if batch_selected.contains(&h.name) {
+                "\u{2611} "
+            } else {
+                "\u{2610} "
+            };
             list_items.push(ListItem::new(Line::from(vec![
-                Span::styled("  ", Style::default()),
+                Span::styled(format!(" {}", checked), Style::default().fg(theme.accent)),
                 Span::styled(format!(" {} ", icon), Style::default().fg(indicator_fg)),
                 Span::styled(
                     format!(" {}", truncate(&h.name, 18)),
@@ -101,7 +107,13 @@ pub fn draw_host_list(
                     HostStatus::Dead(_) => ("\u{2715}", theme.bad),
                     HostStatus::Unknown => ("\u{25cb}", theme.dim),
                 };
+                let checked = if batch_selected.contains(&h.name) {
+                    "\u{2611} "
+                } else {
+                    "\u{2610} "
+                };
                 ListItem::new(Line::from(vec![
+                    Span::styled(checked, Style::default().fg(theme.accent)),
                     Span::styled(format!(" {} ", icon), Style::default().fg(indicator_fg)),
                     Span::styled(
                         format!(" {}", truncate(&h.name, 18)),

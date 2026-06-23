@@ -448,6 +448,7 @@ impl SettingsFocus {
             for f in &mut sec.fields {
                 if i == self.cursor {
                     f.value = self.edit_buf.clone();
+                    self.modified = true;
                     return;
                 }
                 i += 1;
@@ -927,5 +928,274 @@ impl SettingsFocus {
             }
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_test_settings() -> betterssh_core::Settings {
+        let mut s = betterssh_core::Settings::default();
+        s.default_user = "test".into();
+        s.keepalive_secs = 15;
+        s.term_type = "xterm".into();
+        s.scrollback = 2000;
+        s.log_lines = 500;
+        s.theme = "nord".into();
+        s.ping_check = true;
+        s.auto_reconnect = false;
+        s.mouse = true;
+        s.show_metrics = true;
+        s
+    }
+
+    // ===== SettingsFocus =====
+
+    #[test]
+    fn settings_focus_new() {
+        let settings = make_test_settings();
+        let sf = SettingsFocus::new(&settings);
+        assert_eq!(sf.cursor, 0);
+        assert!(!sf.editing);
+        assert!(!sf.modified);
+        assert!(!sf.sections.is_empty());
+    }
+
+    #[test]
+    fn settings_focus_initial_values() {
+        let settings = make_test_settings();
+        let sf = SettingsFocus::new(&settings);
+        let default_user = sf.field_value_by_key("default_user");
+        assert_eq!(default_user.as_deref(), Some("test"));
+        assert_eq!(sf.field_value_by_key("theme").as_deref(), Some("nord"));
+        assert_eq!(sf.field_value_by_key("ping_check").as_deref(), Some("yes"));
+        assert_eq!(sf.field_value_by_key("auto_reconnect").as_deref(), Some("no"));
+        assert_eq!(sf.field_value_by_key("mouse").as_deref(), Some("yes"));
+    }
+
+    #[test]
+    fn settings_focus_toggle_bool() {
+        let settings = make_test_settings();
+        let mut sf = SettingsFocus::new(&settings);
+        let ping_idx = sf.field_index_by_key("ping_check").unwrap();
+        assert_eq!(sf.field_value_by_key("ping_check").as_deref(), Some("yes"));
+        sf.toggle_bool(ping_idx);
+        assert_eq!(sf.field_value_by_key("ping_check").as_deref(), Some("no"));
+        assert!(sf.modified);
+        sf.toggle_bool(ping_idx);
+        assert_eq!(sf.field_value_by_key("ping_check").as_deref(), Some("yes"));
+    }
+
+    #[test]
+    fn settings_focus_apply() {
+        let settings = make_test_settings();
+        let mut sf = SettingsFocus::new(&settings);
+        let ping_idx = sf.field_index_by_key("ping_check").unwrap();
+        sf.toggle_bool(ping_idx);
+
+        let keepalive_idx = sf.field_index_by_key("keepalive_secs").unwrap();
+        sf.cursor = keepalive_idx;
+        sf.start_edit(keepalive_idx);
+        sf.edit_buf = "60".into();
+        sf.commit_edit();
+
+        let mut out = settings.clone();
+        sf.apply(&mut out);
+        assert!(!out.ping_check);
+        assert_eq!(out.keepalive_secs, 60);
+        assert_eq!(out.default_user, "test");
+        assert_eq!(out.theme, "nord");
+    }
+
+    #[test]
+    fn settings_focus_start_edit() {
+        let settings = make_test_settings();
+        let mut sf = SettingsFocus::new(&settings);
+        let idx = sf.field_index_by_key("default_user").unwrap();
+        sf.start_edit(idx);
+        assert!(sf.editing);
+        assert_eq!(sf.edit_buf, "test");
+    }
+
+    #[test]
+    fn settings_focus_commit_edit() {
+        let settings = make_test_settings();
+        let mut sf = SettingsFocus::new(&settings);
+        let idx = sf.field_index_by_key("default_user").unwrap();
+        sf.cursor = idx;
+        sf.start_edit(idx);
+        sf.edit_buf = "admin".into();
+        sf.commit_edit();
+        assert_eq!(sf.field_value_by_key("default_user").as_deref(), Some("admin"));
+        assert!(sf.modified);
+    }
+
+    #[test]
+    fn settings_focus_cycle_field() {
+        let settings = make_test_settings();
+        let mut sf = SettingsFocus::new(&settings);
+        let total = sf.total_fields();
+        assert!(total > 5);
+        sf.cycle_field(0, 1);
+        assert_eq!(sf.cursor, 1);
+        sf.cycle_field(1, total as i32 - 1);
+        assert_eq!(sf.cursor, 0);
+    }
+
+    #[test]
+    fn settings_focus_jump_section() {
+        let settings = make_test_settings();
+        let mut sf = SettingsFocus::new(&settings);
+        assert_eq!(sf.current_section(), 0);
+        sf.jump_section(1);
+        assert_eq!(sf.current_section(), 1);
+        sf.jump_section(1);
+        assert_eq!(sf.current_section(), 2);
+        sf.jump_section(-1);
+        assert_eq!(sf.current_section(), 1);
+    }
+
+    #[test]
+    fn settings_focus_section_start() {
+        let settings = make_test_settings();
+        let sf = SettingsFocus::new(&settings);
+        assert_eq!(sf.section_start(0), 0);
+        let sec1_start = sf.section_start(1);
+        let sec0_len = sf.sections[0].fields.len();
+        assert_eq!(sec1_start, sec0_len);
+    }
+
+    #[test]
+    fn settings_focus_current_section() {
+        let settings = make_test_settings();
+        let sf = SettingsFocus::new(&settings);
+        assert_eq!(sf.current_section(), 0);
+    }
+
+    #[test]
+    fn settings_focus_handle_key_navigation() {
+        let settings = make_test_settings();
+        let mut sf = SettingsFocus::new(&settings);
+        let down = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
+        sf.handle_key(down);
+        assert_eq!(sf.cursor, 1);
+        let up = KeyEvent::new(KeyCode::Up, KeyModifiers::NONE);
+        sf.handle_key(up);
+        assert_eq!(sf.cursor, 0);
+    }
+
+    #[test]
+    fn settings_focus_handle_key_toggle_bool() {
+        let settings = make_test_settings();
+        let mut sf = SettingsFocus::new(&settings);
+        let ping_idx = sf.field_index_by_key("ping_check").unwrap();
+        sf.cursor = ping_idx;
+        let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        sf.handle_key(enter);
+        assert_eq!(sf.field_value_by_key("ping_check").as_deref(), Some("no"));
+    }
+
+    #[test]
+    fn settings_focus_handle_key_esc_not_editing() {
+        let settings = make_test_settings();
+        let mut sf = SettingsFocus::new(&settings);
+        let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        let action = sf.handle_key(esc);
+        assert_eq!(action, Some(SettingsAction::Close));
+    }
+
+    #[test]
+    fn settings_focus_select_next_option() {
+        let settings = make_test_settings();
+        let mut sf = SettingsFocus::new(&settings);
+        let theme_idx = sf.field_index_by_key("theme").unwrap();
+        sf.select_next_option(theme_idx, 1);
+        assert_ne!(sf.field_value_by_key("theme").as_deref(), Some("nord"));
+        assert!(sf.modified);
+    }
+
+    #[test]
+    fn settings_focus_total_fields_matches_sum() {
+        let settings = make_test_settings();
+        let sf = SettingsFocus::new(&settings);
+        let total: usize = sf.sections.iter().map(|s| s.fields.len()).sum();
+        assert_eq!(sf.total_fields(), total);
+    }
+
+    // ===== Utility =====
+
+    #[test]
+    fn is_dark_light_color() {
+        let c = Color::Rgb(200, 200, 200);
+        assert!(!is_dark(c));
+    }
+
+    #[test]
+    fn is_dark_dark_color() {
+        let c = Color::Rgb(30, 30, 30);
+        assert!(is_dark(c));
+    }
+
+    #[test]
+    fn is_dark_non_rgb() {
+        assert!(is_dark(Color::Reset));
+    }
+
+    #[test]
+    fn rgb_parts_rgb() {
+        assert_eq!(rgb_parts(Color::Rgb(10, 20, 30)), (10, 20, 30));
+    }
+
+    #[test]
+    fn rgb_parts_non_rgb() {
+        assert_eq!(rgb_parts(Color::Reset), (0, 0, 0));
+    }
+
+    #[test]
+    fn lerp_color_identity() {
+        let a = Color::Rgb(100, 100, 100);
+        assert_eq!(lerp_color(a, Color::Rgb(200, 200, 200), 0.0), a);
+    }
+
+    #[test]
+    fn lerp_color_full() {
+        let b = Color::Rgb(200, 200, 200);
+        assert_eq!(lerp_color(Color::Rgb(100, 100, 100), b, 1.0), b);
+    }
+
+    #[test]
+    fn lerp_color_mid() {
+        let r = lerp_color(Color::Rgb(0, 0, 0), Color::Rgb(100, 100, 100), 0.5);
+        assert_eq!(r, Color::Rgb(50, 50, 50));
+    }
+
+    #[test]
+    fn lerp_color_clamped() {
+        let a = Color::Rgb(0, 0, 0);
+        assert_eq!(lerp_color(a, Color::Rgb(100, 0, 0), -0.5), a);
+        assert_eq!(lerp_color(Color::Rgb(0, 0, 0), Color::Rgb(100, 0, 0), 1.5), Color::Rgb(100, 0, 0));
+    }
+
+    #[test]
+    fn cycle_color_phase_0() {
+        let a = Color::Rgb(255, 0, 0);
+        let b = Color::Rgb(0, 255, 0);
+        let c = Color::Rgb(0, 0, 255);
+        assert_eq!(cycle_color(a, b, c, 0.0), a);
+    }
+
+    #[test]
+    fn build_keybinding_fields_empty() {
+        let settings = make_test_settings();
+        let fields = build_keybinding_fields(&settings);
+        assert!(fields.iter().any(|f| f.key == "kb_add"));
+    }
+
+    #[test]
+    fn build_macro_fields_empty() {
+        let settings = make_test_settings();
+        let fields = build_macro_fields(&settings);
+        assert!(fields.iter().any(|f| f.key == "macro_add"));
     }
 }
