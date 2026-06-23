@@ -7,7 +7,6 @@ fn main() {
         return;
     }
 
-    
     if let Some(ver) = git_describe() {
         println!("cargo:rustc-env=CARGO_PKG_VERSION={}", ver);
     }
