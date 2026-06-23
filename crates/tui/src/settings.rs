@@ -511,7 +511,7 @@ pub fn draw_settings(
             let phase = animation_phase(3000);
             let nick_color = cycle_color(theme.accent2, theme.accent, theme.good, phase);
 
-            let raw_lines = vec![
+            let raw_lines = [
                 format!("Made with {} by project-fe.dev", '\u{2665}'),
                 "Main developer: c0redev".into(),
                 "Website: unitdev.run".into(),
@@ -606,7 +606,7 @@ pub fn draw_settings(
             let val = if editing {
                 format!(" {}_", s.edit_buf)
             } else {
-                format!("{}", f.value)
+                f.value.to_string()
             };
 
             let val_color = if editing {

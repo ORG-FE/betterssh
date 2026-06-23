@@ -50,7 +50,7 @@ impl TerminalView {
 
     pub fn cursor(&self) -> (u16, u16) {
         let (r, c) = self.parser.screen().cursor_position();
-        (c as u16, r as u16)
+        (c, r)
     }
 
     pub fn scroll_up(&mut self, n: u16) {
@@ -101,7 +101,7 @@ impl TerminalView {
         let mut out = Vec::with_capacity(self.rows as usize);
         for y in want_from..want_to.min(total) {
             let mut s = String::new();
-            for x in 0..self.cols as u16 {
+            for x in 0..self.cols {
                 if let Some(cell) = screen.cell(y as u16, x) {
                     s.push(cell.contents().chars().next().unwrap_or(' '));
                 } else {

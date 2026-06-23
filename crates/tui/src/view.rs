@@ -10,6 +10,7 @@ use ratatui::widgets::{
 use ratatui::Frame;
 use std::collections::{HashMap, HashSet};
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw_host_list(
     f: &mut Frame,
     area: Rect,
@@ -145,6 +146,7 @@ pub fn draw_host_list(
     f.render_stateful_widget(list, area, state);
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw_terminal(
     f: &mut Frame,
     area: Rect,

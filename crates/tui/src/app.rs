@@ -240,7 +240,6 @@ impl App {
     fn render_frame(&mut self, f: &mut Frame, theme: &Theme) {
         let area = f.area();
 
-        if self.sftp_session_id.is_some() && matches!(self.mode, AppMode::Sftp) {}
         if let Some(idx) = self.active_session {
             if let Some(s) = self.sessions.get(idx) {
                 if matches!(s.status, SessionStatus::Active | SessionStatus::Connecting)
@@ -465,7 +464,7 @@ impl App {
                 if pos < line_str.len() {
                     spans.push(Span::raw(line_str[pos..].to_string()));
                 }
-                lines[li as usize] = Line::from(spans);
+                lines[li] = Line::from(spans);
             }
         }
         let (cursor_col, cursor_row) = self.sessions[idx].view.cursor();
@@ -1482,22 +1481,22 @@ impl App {
             return;
         }
 
-        if !self.sessions.is_empty() && !matches!(self.mode, AppMode::Prompt { .. }) {
-            if k.code == KeyCode::Tab
-                && !k.modifiers.contains(KeyModifiers::CONTROL)
-                && !self.capture_mode
-            {
-                self.focus = Focus::Terminal;
+        if !self.sessions.is_empty()
+            && !matches!(self.mode, AppMode::Prompt { .. })
+            && k.code == KeyCode::Tab
+            && !k.modifiers.contains(KeyModifiers::CONTROL)
+            && !self.capture_mode
+        {
+            self.focus = Focus::Terminal;
 
-                let first = self
-                    .sessions
-                    .iter()
-                    .position(|s| s.is_active() || s.disconnected().is_some())
-                    .or(self.active_session);
-                if let Some(i) = first {
-                    self.active_session = Some(i);
-                    return;
-                }
+            let first = self
+                .sessions
+                .iter()
+                .position(|s| s.is_active() || s.disconnected().is_some())
+                .or(self.active_session);
+            if let Some(i) = first {
+                self.active_session = Some(i);
+                return;
             }
         }
 
@@ -1883,7 +1882,7 @@ impl App {
             }
             (KeyCode::Enter, _) => {
                 if let Some(h) = self.selected_host().cloned() {
-                    let _ = cmd_tx.send(Cmd::Connect { host: h });
+                    let _ = cmd_tx.send(Cmd::Connect { host: Box::new(h) });
                 }
             }
             (KeyCode::F(2), _) => {
@@ -3891,7 +3890,7 @@ fn format_network_speed(kbs: f32) -> String {
     } else if kbs >= 1.0 {
         format!("{:.0}KB/s", kbs)
     } else {
-        format!("0B/s")
+        "0B/s".to_string()
     }
 }
 
@@ -4303,7 +4302,7 @@ fn key_to_bytes(k: KeyEvent) -> Vec<u8> {
 
 #[derive(Debug)]
 pub enum Cmd {
-    Connect { host: Host },
+    Connect { host: Box<Host> },
     CancelConnect,
     OpenSftp { session_id: SessionId },
     SftpEnter,

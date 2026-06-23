@@ -80,6 +80,12 @@ pub struct SearchState {
     pub active: bool,
 }
 
+impl Default for SearchState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SearchState {
     pub fn new() -> Self {
         Self {
