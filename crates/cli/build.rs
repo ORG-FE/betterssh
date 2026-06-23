@@ -4,7 +4,6 @@ fn main() {
             "cargo:rustc-env=CARGO_PKG_VERSION={}",
             ver.trim_start_matches('v')
         );
-        return;
     }
 
     if let Ok(output) = std::process::Command::new("git")
@@ -17,7 +16,6 @@ fn main() {
                 "cargo:rustc-env=CARGO_PKG_VERSION={}",
                 ver.trim_start_matches('v')
             );
-            return;
         }
     }
 }
