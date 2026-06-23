@@ -106,6 +106,7 @@ pub fn do_install() {
 fn inner_install() -> Result<(), String> {
     let ver = LATEST_VER.get().ok_or_else(|| String::from("no version"))?;
     let target = target_triple()?;
+    let current_exe = std::env::current_exe().map_err(|e| format!("current_exe: {}", e))?;
 
     let bin_name = if cfg!(windows) {
         format!("betterssh-{}.exe", target)
@@ -117,7 +118,10 @@ fn inner_install() -> Result<(), String> {
         REPO, ver, bin_name
     );
 
-    let temp_dir = std::env::temp_dir().join(format!("betterssh_updt_{}", ver));
+    let temp_dir = current_exe
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join(".betterssh_update");
     let _ = std::fs::create_dir_all(&temp_dir);
     let bin_path = temp_dir.join(&bin_name);
 
@@ -129,8 +133,6 @@ fn inner_install() -> Result<(), String> {
     let mut out = std::fs::File::create(&bin_path).map_err(|e| format!("create: {}", e))?;
     std::io::copy(&mut reader, &mut out).map_err(|e| format!("copy: {}", e))?;
     drop(out);
-
-    let current_exe = std::env::current_exe().map_err(|e| format!("current_exe: {}", e))?;
 
     #[cfg(unix)]
     {
