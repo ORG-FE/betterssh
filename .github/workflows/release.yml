@@ -46,9 +46,10 @@ jobs:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
       - name: Prepare binary
+        shell: bash
         run: |
-          cp target/${{ matrix.target }}/release/betterssh${{ runner.os == 'Windows' && '.exe' || '' }} \
-            betterssh-${{ matrix.target }}${{ runner.os == 'Windows' && '.exe' || '' }}
+          cp "target/${{ matrix.target }}/release/betterssh${{ runner.os == 'Windows' && '.exe' || '' }}" \
+            "betterssh-${{ matrix.target }}${{ runner.os == 'Windows' && '.exe' || '' }}"
 
       - uses: actions/upload-artifact@v5
         with:
