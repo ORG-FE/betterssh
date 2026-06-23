@@ -134,21 +134,19 @@ fn inner_install() -> Result<(), String> {
 
     #[cfg(unix)]
     {
-        let data = std::fs::read(&bin_path).map_err(|e| format!("read new: {}", e))?;
-        std::fs::write(&current_exe, &data).map_err(|e| format!("write: {}", e))?;
-        std::fs::set_permissions(
-            &current_exe,
-            std::os::unix::fs::PermissionsExt::from_mode(0o755),
-        )
-        .ok();
+        use std::os::unix::fs::PermissionsExt;
+
+        std::fs::set_permissions(&bin_path, PermissionsExt::from_mode(0o755))
+            .map_err(|e| format!("chmod: {}", e))?;
+        std::fs::rename(&bin_path, &current_exe).map_err(|e| format!("replace: {}", e))?;
     }
 
     #[cfg(windows)]
     {
-        let tmp = current_exe.with_extension("old.exe");
-        std::fs::rename(&current_exe, &tmp).map_err(|e| format!("backup: {}", e))?;
+        let bak = current_exe.with_extension("old.exe");
+        std::fs::rename(&current_exe, &bak).map_err(|e| format!("backup: {}", e))?;
         std::fs::rename(&bin_path, &current_exe).map_err(|e| format!("replace: {}", e))?;
-        let _ = std::fs::remove_file(&tmp);
+        let _ = std::fs::remove_file(&bak);
     }
 
     let _ = std::fs::remove_dir_all(&temp_dir);
