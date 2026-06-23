@@ -25,7 +25,6 @@ russh = { workspace = true }
 toml = { workspace = true }
 ureq = { version = "2.9", default-features = false, features = ["json", "gzip", "tls"] }
 serde_json = { workspace = true }
-zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tokio = { workspace = true }

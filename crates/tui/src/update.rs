@@ -108,19 +108,20 @@ pub fn do_install() {
 fn inner_install() -> Result<(), String> {
     let ver = LATEST_VER.get().ok_or_else(|| String::from("no version"))?;
     let target = target_triple()?;
-    let archive_ext = if cfg!(windows) {
-        "zip"
+
+    let bin_name = if cfg!(windows) {
+        format!("betterssh-{}.exe", target)
     } else {
-        "tar.gz"
+        format!("betterssh-{}", target)
     };
     let url = format!(
-        "https://github.com/{}/releases/download/v{}/betterssh-{}.{}",
-        REPO, ver, target, archive_ext
+        "https://github.com/{}/releases/download/v{}/{}",
+        REPO, ver, bin_name
     );
 
     let temp_dir = std::env::temp_dir().join(format!("betterssh_updt_{}", ver));
     let _ = std::fs::create_dir_all(&temp_dir);
-    let archive_path = temp_dir.join(format!("archive.{}", archive_ext));
+    let bin_path = temp_dir.join(&bin_name);
 
     let resp = ureq::get(&url)
         .set("User-Agent", "betterssh-update")
@@ -128,18 +129,9 @@ fn inner_install() -> Result<(), String> {
         .map_err(|e| format!("download: {}", e))?;
     let mut reader = resp.into_reader();
     let mut out =
-        std::fs::File::create(&archive_path).map_err(|e| format!("create: {}", e))?;
+        std::fs::File::create(&bin_path).map_err(|e| format!("create: {}", e))?;
     std::io::copy(&mut reader, &mut out).map_err(|e| format!("copy: {}", e))?;
     drop(out);
-
-    let binary_name = "betterssh";
-    #[cfg(windows)]
-    let binary_name = "betterssh.exe";
-
-    #[cfg(unix)]
-    let new_bin = extract_tar_gz(&archive_path, &temp_dir, binary_name)?;
-    #[cfg(windows)]
-    let new_bin = extract_zip(&archive_path, &temp_dir, binary_name)?;
 
     let current_exe =
         std::env::current_exe().map_err(|e| format!("current_exe: {}", e))?;
@@ -147,7 +139,7 @@ fn inner_install() -> Result<(), String> {
     #[cfg(unix)]
     {
         let data =
-            std::fs::read(&new_bin).map_err(|e| format!("read new: {}", e))?;
+            std::fs::read(&bin_path).map_err(|e| format!("read new: {}", e))?;
         std::fs::write(&current_exe, &data).map_err(|e| format!("write: {}", e))?;
         std::fs::set_permissions(
             &current_exe,
@@ -160,7 +152,7 @@ fn inner_install() -> Result<(), String> {
     {
         let tmp = current_exe.with_extension("old.exe");
         std::fs::rename(&current_exe, &tmp).map_err(|e| format!("backup: {}", e))?;
-        std::fs::rename(&new_bin, &current_exe)
+        std::fs::rename(&bin_path, &current_exe)
             .map_err(|e| format!("replace: {}", e))?;
         let _ = std::fs::remove_file(&tmp);
     }
@@ -182,59 +174,4 @@ fn target_triple() -> Result<String, String> {
     }
 }
 
-#[cfg(unix)]
-fn extract_tar_gz(
-    archive: &std::path::Path,
-    dest: &std::path::Path,
-    binary: &str,
-) -> Result<std::path::PathBuf, String> {
-    let out = std::process::Command::new("tar")
-        .args([
-            "xzf",
-            archive.to_str().unwrap(),
-            "-C",
-            dest.to_str().unwrap(),
-            "--strip-components=1",
-        ])
-        .output()
-        .map_err(|e| format!("tar: {}", e))?;
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        return Err(format!("extract failed: {}", stderr));
-    }
-    let bin_path = dest.join(binary);
-    if !bin_path.exists() {
-        return Err("binary not found after extract".into());
-    }
-    Ok(bin_path)
-}
 
-#[cfg(windows)]
-fn extract_zip(
-    archive: &std::path::Path,
-    dest: &std::path::Path,
-    binary: &str,
-) -> Result<std::path::PathBuf, String> {
-    let file =
-        std::fs::File::open(archive).map_err(|e| format!("open zip: {}", e))?;
-    let mut zip =
-        zip::ZipArchive::new(file).map_err(|e| format!("read zip: {}", e))?;
-    let mut found = false;
-    for i in 0..zip.len() {
-        let mut entry = zip.by_index(i).map_err(|e| format!("entry {}: {}", i, e))?;
-        let name = entry.name().replace('\\', "/");
-        if name.ends_with(&format!("/{}", binary)) || name == binary {
-            let mut data = Vec::new();
-            std::io::copy(&mut entry, &mut data)
-                .map_err(|e| format!("extract: {}", e))?;
-            let out_path = dest.join(binary);
-            std::fs::write(&out_path, &data).map_err(|e| format!("write: {}", e))?;
-            found = true;
-            break;
-        }
-    }
-    if !found {
-        return Err("binary not found in zip".into());
-    }
-    Ok(dest.join(binary))
-}

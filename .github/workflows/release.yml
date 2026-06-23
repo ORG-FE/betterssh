@@ -28,48 +28,28 @@ jobs:
             os: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
       - name: Install cross deps (aarch64-linux)
         if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
         env:
           RELEASE_VERSION: ${{ github.ref_name }}
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
-      - name: Prepare dist
-        run: mkdir -p dist
-
-      - name: Package (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          cp target/${{ matrix.target }}/release/betterssh dist/
-          cd dist
-          tar czf ../betterssh-${{ matrix.target }}.tar.gz betterssh
-
-      - name: Package (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          cp target/${{ matrix.target }}/release/betterssh dist/
-          cd dist
-          tar czf ../betterssh-${{ matrix.target }}.tar.gz betterssh
-
-      - name: Package (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          copy target\${{ matrix.target }}\release\betterssh.exe dist\
-          cd dist
-          tar czf ..\betterssh-${{ matrix.target }}.tar.gz betterssh.exe
-
-      - uses: actions/upload-artifact@v4
+      - name: Upload binary
+        uses: actions/upload-artifact@v5
         with:
           name: betterssh-${{ matrix.target }}
-          path: betterssh-${{ matrix.target }}.tar.gz
+          path: target/${{ matrix.target }}/release/betterssh${{ runner.os == 'Windows' && '.exe' || '' }}
 
   release:
     name: Create Release
@@ -79,13 +59,16 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           pattern: betterssh-*
           merge-multiple: true
 
+      - name: Make executable (linux/macos)
+        run: chmod +x betterssh-*
+
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          files: betterssh-*.tar.gz
+          files: betterssh-*
           generate_release_notes: true
