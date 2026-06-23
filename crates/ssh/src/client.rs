@@ -6,15 +6,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex as AsyncMutex};
 
-pub type RemoteForwards = Arc<AsyncMutex<HashMap<String, mpsc::UnboundedSender<russh::Channel<Msg>>>>>;
+pub type RemoteForwards =
+    Arc<AsyncMutex<HashMap<String, mpsc::UnboundedSender<russh::Channel<Msg>>>>>;
 
 pub async fn load_agent_keys() -> Vec<key::KeyPair> {
     if std::env::var("SSH_AUTH_SOCK").is_err() {
         return vec![];
     }
-    
-    
-    
+
     vec![]
 }
 
@@ -47,7 +46,10 @@ pub struct ConnectOpts {
 
 #[derive(Debug, Clone)]
 pub enum AuthChoice {
-    KeyFile { path: String, passphrase: Option<String> },
+    KeyFile {
+        path: String,
+        passphrase: Option<String>,
+    },
     Password(String),
 }
 
@@ -104,7 +106,9 @@ impl client::Handler for ClientHandler {
         } else {
             tracing::warn!(
                 "no handler for remote forward {} from {}:{}",
-                key, originator_address, originator_port
+                key,
+                originator_address,
+                originator_port
             );
         }
         Ok(())
@@ -127,18 +131,27 @@ pub fn load_key(path: &str, passphrase: Option<&str>) -> SshResult<key::KeyPair>
     russh::keys::load_secret_key(path, passphrase).map_err(SshError::from)
 }
 
-pub async fn connect(opts: &ConnectOpts) -> SshResult<(Handle<ClientHandler>, EventRx, RemoteForwards)> {
+pub async fn connect(
+    opts: &ConnectOpts,
+) -> SshResult<(Handle<ClientHandler>, EventRx, RemoteForwards)> {
     if !opts.jump.is_empty() {
         return connect_through_jump(opts).await;
     }
     let (tx, rx) = mpsc::unbounded_channel::<SshEvent>();
     let rf = Arc::new(AsyncMutex::new(HashMap::new()));
-    let handler = ClientHandler { tx, remote_forwards: rf.clone() };
+    let handler = ClientHandler {
+        tx,
+        remote_forwards: rf.clone(),
+    };
     let cfg = build_config(opts.keepalive_secs)?;
 
     let mut session = client::connect(cfg, (opts.host.as_str(), opts.port), handler).await?;
 
-    let agent_keys = if opts.use_agent { load_agent_keys().await } else { vec![] };
+    let agent_keys = if opts.use_agent {
+        load_agent_keys().await
+    } else {
+        vec![]
+    };
     let key_auth_ok = try_key_auth(&mut session, &opts.user, &opts.auth, &agent_keys).await?;
     if !key_auth_ok {
         return Err(SshError::Auth {
@@ -148,7 +161,6 @@ pub async fn connect(opts: &ConnectOpts) -> SshResult<(Handle<ClientHandler>, Ev
     }
 
     Ok((session, rx, rf))
-
 }
 
 pub async fn connect_with_password<F>(
@@ -163,19 +175,25 @@ where
     }
     let (tx, rx) = mpsc::unbounded_channel::<SshEvent>();
     let rf = Arc::new(AsyncMutex::new(HashMap::new()));
-    let handler = ClientHandler { tx, remote_forwards: rf.clone() };
+    let handler = ClientHandler {
+        tx,
+        remote_forwards: rf.clone(),
+    };
     let cfg = build_config(opts.keepalive_secs)?;
 
     let mut session = client::connect(cfg, (opts.host.as_str(), opts.port), handler).await?;
 
-    let agent_keys = if opts.use_agent { load_agent_keys().await } else { vec![] };
+    let agent_keys = if opts.use_agent {
+        load_agent_keys().await
+    } else {
+        vec![]
+    };
     let key_auth_ok = try_key_auth(&mut session, &opts.user, &opts.auth, &agent_keys).await?;
     tracing::debug!(key_auth_ok, auth_count = opts.auth.len());
     if key_auth_ok {
         return Ok((session, rx, rf));
     }
 
-    
     for choice in &opts.auth {
         if let AuthChoice::Password(pw) = choice {
             tracing::debug!("trying stored password");
@@ -185,7 +203,6 @@ where
         }
     }
 
-    
     if let Some(pw) = ask_password() {
         tracing::debug!(pw_len = pw.len(), "trying interactive password");
         match session.authenticate_password(&opts.user, pw).await {
@@ -209,10 +226,15 @@ where
     })
 }
 
-async fn connect_through_jump(opts: &ConnectOpts) -> SshResult<(Handle<ClientHandler>, EventRx, RemoteForwards)> {
+async fn connect_through_jump(
+    opts: &ConnectOpts,
+) -> SshResult<(Handle<ClientHandler>, EventRx, RemoteForwards)> {
     let (tx, rx) = mpsc::unbounded_channel::<SshEvent>();
     let rf = Arc::new(AsyncMutex::new(HashMap::new()));
-    let handler = ClientHandler { tx: tx.clone(), remote_forwards: rf.clone() };
+    let handler = ClientHandler {
+        tx: tx.clone(),
+        remote_forwards: rf.clone(),
+    };
     let cfg = build_config(opts.keepalive_secs)?;
 
     let jump = &opts.jump[0];
@@ -220,16 +242,27 @@ async fn connect_through_jump(opts: &ConnectOpts) -> SshResult<(Handle<ClientHan
     let mut jh = client::connect(
         cfg.clone(),
         (jump.host.as_str(), jump.port),
-        ClientHandler { tx: jump_tx, remote_forwards: Arc::new(AsyncMutex::new(HashMap::new())) },
-    ).await?;
+        ClientHandler {
+            tx: jump_tx,
+            remote_forwards: Arc::new(AsyncMutex::new(HashMap::new())),
+        },
+    )
+    .await?;
 
-    
-    let jump_agent = if jump.use_agent { load_agent_keys().await } else { vec![] };
+    let jump_agent = if jump.use_agent {
+        load_agent_keys().await
+    } else {
+        vec![]
+    };
     let jump_key_ok = try_key_auth(&mut jh, &jump.user, &jump.auth, &jump_agent).await?;
     if !jump_key_ok {
         for choice in &jump.auth {
             if let AuthChoice::Password(pw) = choice {
-                if jh.authenticate_password(&jump.user, pw.clone()).await.unwrap_or(false) {
+                if jh
+                    .authenticate_password(&jump.user, pw.clone())
+                    .await
+                    .unwrap_or(false)
+                {
                     tracing::debug!("jump password auth ok");
                     break;
                 }
@@ -237,19 +270,21 @@ async fn connect_through_jump(opts: &ConnectOpts) -> SshResult<(Handle<ClientHan
         }
     }
 
-    
     let ch = jh
         .channel_open_direct_tcpip(opts.host.as_str(), opts.port as u32, "127.0.0.1", 0)
         .await
         .map_err(|e| SshError::Other(format!("jump channel: {}", e)))?;
     let stream = ch.into_stream();
 
-    
     let mut session = client::connect_stream(cfg, stream, handler)
         .await
         .map_err(|e| SshError::Other(format!("jump target connect: {}", e)))?;
 
-    let agent_keys = if opts.use_agent { load_agent_keys().await } else { vec![] };
+    let agent_keys = if opts.use_agent {
+        load_agent_keys().await
+    } else {
+        vec![]
+    };
     let key_auth_ok = try_key_auth(&mut session, &opts.user, &opts.auth, &agent_keys).await?;
     if !key_auth_ok {
         return Err(SshError::Auth {
@@ -269,7 +304,6 @@ async fn try_key_auth(
 ) -> SshResult<bool> {
     let mut tried_any = false;
 
-    
     for choice in auth {
         if let AuthChoice::KeyFile { path, passphrase } = choice {
             if path.is_empty() || path == "(none)" {
@@ -284,16 +318,12 @@ async fn try_key_auth(
                     continue;
                 }
             };
-            if session
-                .authenticate_publickey(user, Arc::new(key))
-                .await?
-            {
+            if session.authenticate_publickey(user, Arc::new(key)).await? {
                 return Ok(true);
             }
         }
     }
 
-    
     for key in agent_keys {
         tried_any = true;
         tracing::debug!("trying agent key");
@@ -308,7 +338,10 @@ async fn try_key_auth(
     Ok(tried_any)
 }
 
-pub async fn open_shell(session: &Handle<ClientHandler>, opts: &ConnectOpts) -> SshResult<Channel<Msg>> {
+pub async fn open_shell(
+    session: &Handle<ClientHandler>,
+    opts: &ConnectOpts,
+) -> SshResult<Channel<Msg>> {
     let ch = session.channel_open_session().await?;
     let modes: &[(Pty, u32)] = &[];
     ch.request_pty(
@@ -367,7 +400,10 @@ mod tests {
 
     #[test]
     fn auth_choice_label_key() {
-        let a = AuthChoice::KeyFile { path: "/home/user/.ssh/id_rsa".into(), passphrase: None };
+        let a = AuthChoice::KeyFile {
+            path: "/home/user/.ssh/id_rsa".into(),
+            passphrase: None,
+        };
         assert_eq!(a.label(), "key:/home/user/.ssh/id_rsa");
     }
 
@@ -401,7 +437,10 @@ mod tests {
 
     #[test]
     fn ssh_error_display() {
-        let err = SshError::Auth { user: "test".into(), host: "example.com:22".into() };
+        let err = SshError::Auth {
+            user: "test".into(),
+            host: "example.com:22".into(),
+        };
         assert_eq!(format!("{}", err), "auth failed for test@example.com:22");
     }
 }

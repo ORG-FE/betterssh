@@ -73,8 +73,8 @@ async fn start_local(
                             Ok(ch) => {
                                 let mut ch_stream = ch.into_stream();
                                 let mut tcp_stream = conn;
-                                let _ = io::copy_bidirectional(&mut ch_stream, &mut tcp_stream)
-                                    .await;
+                                let _ =
+                                    io::copy_bidirectional(&mut ch_stream, &mut tcp_stream).await;
                             }
                             Err(e) => {
                                 tracing::error!("forward {}: channel open: {:?}", id, e);
@@ -109,7 +109,6 @@ async fn start_remote(
     let target_host = fw.target_host.clone();
     let target_port = fw.target_port;
 
-    
     {
         let mut h = handle.lock().await;
         h.tcpip_forward(&listen_addr, listen_port as u32)
@@ -124,10 +123,12 @@ async fn start_remote(
 
     let _ = status_tx.send(ForwardEvent {
         id,
-        status: format!("remote {}:{} -> {}:{}", listen_addr, listen_port, target_host, target_port),
+        status: format!(
+            "remote {}:{} -> {}:{}",
+            listen_addr, listen_port, target_host, target_port
+        ),
     });
 
-    
     let key = format!("{}:{}", listen_addr, listen_port);
     let (incoming_tx, mut incoming_rx) = mpsc::unbounded_channel();
 
@@ -143,7 +144,7 @@ async fn start_remote(
             let target_host = target_host.clone();
             tokio::spawn(async move {
                 let mut ch_stream = ch.into_stream();
-                
+
                 let target_addr = format!("{}:{}", target_host, target_port);
                 match TcpStream::connect(&target_addr).await {
                     Ok(tcp) => {
@@ -151,10 +152,7 @@ async fn start_remote(
                         let _ = io::copy_bidirectional(&mut ch_stream, &mut tcp_stream).await;
                     }
                     Err(e) => {
-                        tracing::error!(
-                            "remote forward {}: connect to {}: {}",
-                            id, target_addr, e
-                        );
+                        tracing::error!("remote forward {}: connect to {}: {}", id, target_addr, e);
                     }
                 }
             });

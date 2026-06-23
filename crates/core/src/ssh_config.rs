@@ -25,7 +25,8 @@ pub fn parse_ssh_config<P: AsRef<Path>>(path: P) -> Result<Vec<SshConfigEntry>> 
             continue;
         }
 
-        let parts: Vec<&str> = line.splitn(2, |c: char| c.is_whitespace())
+        let parts: Vec<&str> = line
+            .splitn(2, |c: char| c.is_whitespace())
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .collect();
@@ -39,11 +40,17 @@ pub fn parse_ssh_config<P: AsRef<Path>>(path: P) -> Result<Vec<SshConfigEntry>> 
         match keyword.as_str() {
             "host" => {
                 if let Some(entry) = current.take() {
-                    if !entry.pattern.is_empty() && !entry.pattern.iter().any(|p| p.contains('*') || p.contains('?')) {
+                    if !entry.pattern.is_empty()
+                        && !entry
+                            .pattern
+                            .iter()
+                            .any(|p| p.contains('*') || p.contains('?'))
+                    {
                         entries.push(entry);
                     }
                 }
-                let patterns: Vec<String> = value.split_whitespace().map(|s| s.to_string()).collect();
+                let patterns: Vec<String> =
+                    value.split_whitespace().map(|s| s.to_string()).collect();
                 if !patterns.is_empty() {
                     current = Some(SshConfigEntry {
                         pattern: patterns,
@@ -74,7 +81,8 @@ pub fn parse_ssh_config<P: AsRef<Path>>(path: P) -> Result<Vec<SshConfigEntry>> 
             "identityfile" => {
                 if let Some(ref mut e) = current {
                     let expanded = expand_tilde(value);
-                    e.identity_files.push(expanded.to_string_lossy().to_string());
+                    e.identity_files
+                        .push(expanded.to_string_lossy().to_string());
                 }
             }
             "proxyjump" => {
@@ -98,7 +106,12 @@ pub fn parse_ssh_config<P: AsRef<Path>>(path: P) -> Result<Vec<SshConfigEntry>> 
     }
 
     if let Some(entry) = current {
-        if !entry.pattern.is_empty() && !entry.pattern.iter().any(|p| p.contains('*') || p.contains('?')) {
+        if !entry.pattern.is_empty()
+            && !entry
+                .pattern
+                .iter()
+                .any(|p| p.contains('*') || p.contains('?'))
+        {
             entries.push(entry);
         }
     }
@@ -112,38 +125,45 @@ pub fn ssh_config_path() -> PathBuf {
 }
 
 pub fn entries_to_hosts(entries: &[SshConfigEntry]) -> Vec<Host> {
-    entries.iter().map(|e| {
-        let host_name = e.host_name.as_deref().unwrap_or("");
-        let name = e.pattern.join(", ");
-        let user = e.user.clone().unwrap_or_else(|| "root".into());
-        let port = e.port.unwrap_or(22);
-        let identity: Vec<Identity> = e.identity_files.iter().map(|p| {
-            Identity::Key { path: p.clone(), passphrase: None }
-        }).collect();
+    entries
+        .iter()
+        .map(|e| {
+            let host_name = e.host_name.as_deref().unwrap_or("");
+            let name = e.pattern.join(", ");
+            let user = e.user.clone().unwrap_or_else(|| "root".into());
+            let port = e.port.unwrap_or(22);
+            let identity: Vec<Identity> = e
+                .identity_files
+                .iter()
+                .map(|p| Identity::Key {
+                    path: p.clone(),
+                    passphrase: None,
+                })
+                .collect();
 
-        Host {
-            name: name.clone(),
-            host: host_name.to_string(),
-            port,
-            user,
-            identity,
-            jump: e.proxy_jump.clone(),
-            tags: vec![],
-            group: None,
-            keepalive: e.keepalive,
-            on_connect: vec![],
-            forwarding: vec![],
-        }
-    }).collect()
+            Host {
+                name: name.clone(),
+                host: host_name.to_string(),
+                port,
+                user,
+                identity,
+                jump: e.proxy_jump.clone(),
+                tags: vec![],
+                group: None,
+                keepalive: e.keepalive,
+                on_connect: vec![],
+                forwarding: vec![],
+            }
+        })
+        .collect()
 }
 
 pub fn merge_hosts(existing: &[Host], imported: Vec<Host>) -> Vec<Host> {
     let mut merged = existing.to_vec();
     for h in imported {
-        
-        let dup = merged.iter().any(|x| {
-            x.host == h.host && x.user == h.user && x.port == h.port
-        });
+        let dup = merged
+            .iter()
+            .any(|x| x.host == h.host && x.user == h.user && x.port == h.port);
         if !dup {
             merged.push(h);
         }
@@ -262,7 +282,8 @@ Host myserver
         use std::sync::atomic::{AtomicU32, Ordering};
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("betterssh_test_{}_{}", std::process::id(), id));
+        let dir =
+            std::env::temp_dir().join(format!("betterssh_test_{}_{}", std::process::id(), id));
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join("ssh_config");
         std::fs::write(&path, input).expect("write test config");

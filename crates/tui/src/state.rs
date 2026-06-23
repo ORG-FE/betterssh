@@ -7,8 +7,8 @@ use betterssh_ssh::{ClientHandler, ConnectOpts, RemoteForwards, SshEvent};
 use russh::client::Handle as SshHandle;
 use tokio::sync::{mpsc, Mutex as AsyncMutex};
 
-use crate::pty_render::TerminalView;
 use crate::app::SessionCmd;
+use crate::pty_render::TerminalView;
 
 impl Default for SystemMetrics {
     fn default() -> Self {
@@ -30,7 +30,9 @@ impl Default for SystemMetrics {
 }
 
 fn num_cpus() -> usize {
-    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1)
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
 }
 
 pub type SessionId = u64;
@@ -56,8 +58,8 @@ pub enum Focus {
     Hosts,
     Terminal,
     Sftp,
-    Search,       
-    TermSearch,   
+    Search,
+    TermSearch,
     CmdPalette,
     Prompt,
     Settings,
@@ -73,22 +75,31 @@ pub enum SessionStatus {
 #[derive(Clone)]
 pub struct SearchState {
     pub query: String,
-    pub matches: Vec<(usize, usize)>,  
-    pub current: usize,                
+    pub matches: Vec<(usize, usize)>,
+    pub current: usize,
     pub active: bool,
 }
 
 impl SearchState {
     pub fn new() -> Self {
-        Self { query: String::new(), matches: vec![], current: 0, active: false }
+        Self {
+            query: String::new(),
+            matches: vec![],
+            current: 0,
+            active: false,
+        }
     }
 
     pub fn update(&mut self, lines: &[Vec<char>]) {
         self.matches.clear();
         self.current = 0;
-        if self.query.is_empty() { return; }
+        if self.query.is_empty() {
+            return;
+        }
         for (i, line) in lines.iter().enumerate() {
-            if line.len() < self.query.len() { continue; }
+            if line.len() < self.query.len() {
+                continue;
+            }
             let q: Vec<char> = self.query.chars().collect();
             for start in 0..=line.len().saturating_sub(q.len()) {
                 if line[start..start + q.len()] == q[..] {
@@ -150,10 +161,16 @@ pub struct ActiveSftp {
 
 #[derive(Clone)]
 pub enum PromptKind {
-    Password { host: String },
-    Passphrase { path: String },
+    Password {
+        host: String,
+    },
+    Passphrase {
+        path: String,
+    },
     NewHost,
-    DeleteConfirm { host: String },
+    DeleteConfirm {
+        host: String,
+    },
     EditField {
         host_name: String,
         field: EditField,
@@ -161,15 +178,34 @@ pub enum PromptKind {
     },
     MasterPassword,
 
-    JumpPassword { via: String, dest: String },
-    SftpMkdir { session_id: SessionId },
-    SftpRename { session_id: SessionId },
-    SftpFilter { session_id: SessionId },
-    RenameSession { session_idx: usize },
-    KeybindingEdit { action: String, current: String },
+    JumpPassword {
+        via: String,
+        dest: String,
+    },
+    SftpMkdir {
+        session_id: SessionId,
+    },
+    SftpRename {
+        session_id: SessionId,
+    },
+    SftpFilter {
+        session_id: SessionId,
+    },
+    RenameSession {
+        session_idx: usize,
+    },
+    KeybindingEdit {
+        action: String,
+        current: String,
+    },
     KeybindingNew,
-    MacroName { current: String },
-    MacroCmds { name: String, current_cmds: String },
+    MacroName {
+        current: String,
+    },
+    MacroCmds {
+        name: String,
+        current_cmds: String,
+    },
 }
 
 #[derive(Clone)]
@@ -231,20 +267,16 @@ pub struct App {
     pub snippets: Vec<Snippet>,
     pub session_log: VecDeque<String>,
 
-    
     pub sessions: Vec<Session>,
     pub active_session: Option<usize>,
     pub next_session_id: SessionId,
 
-    
     pub dial_tx: Option<mpsc::UnboundedSender<crate::app::DialResult>>,
-    
+
     pub dial_session_id: Option<SessionId>,
 
-    
     pub sftp_session_id: Option<SessionId>,
 
-    
     pub master_vault: Option<betterssh_core::Vault>,
     pub master_password: Option<String>,
     pub last_entered_password: Option<String>,
@@ -260,7 +292,6 @@ pub struct App {
 
     pub pending_macro_name: Option<(String, Option<usize>)>,
 
-    
     pub pending_host_opts: Option<(String, ConnectOpts)>,
     pub pending_dial: Option<PendingDial>,
     pub metrics: SystemMetrics,
@@ -271,14 +302,15 @@ pub struct App {
     pub prev_cpu_idle: u64,
     pub host_status: std::collections::HashMap<String, HostStatus>,
     pub last_host_check: std::time::Instant,
-    pub pending_host_checks: Vec<(String, std::sync::mpsc::Receiver<std::result::Result<(), String>>)>,
+    pub pending_host_checks: Vec<(
+        String,
+        std::sync::mpsc::Receiver<std::result::Result<(), String>>,
+    )>,
 
-    
     pub remote_metrics: Option<RemoteMetrics>,
     pub remote_metrics_rx: Option<tokio::sync::oneshot::Receiver<Option<RemoteMetrics>>>,
     pub last_remote_metrics_collect: std::time::Instant,
 
-    
     pub sftp_rx: Option<mpsc::UnboundedReceiver<Vec<SftpEntry>>>,
     pub sftp_result_rx: Option<mpsc::UnboundedReceiver<Result<(), String>>>,
 
@@ -420,11 +452,12 @@ impl SftpState {
                 self.local_err = Some(format!("{}", e));
             }
         }
-        self.local_entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.cmp(&b.name),
-        });
+        self.local_entries
+            .sort_by(|a, b| match (a.is_dir, b.is_dir) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.name.cmp(&b.name),
+            });
     }
 }
 
@@ -475,7 +508,11 @@ impl App {
             host_state: state,
             filter: String::new(),
             focus: Focus::Prompt,
-            mode: AppMode::Prompt { kind: PromptKind::MasterPassword, buffer: String::new(), cursor: 0 },
+            mode: AppMode::Prompt {
+                kind: PromptKind::MasterPassword,
+                buffer: String::new(),
+                cursor: 0,
+            },
             should_quit: false,
             term_cols: cols,
 
@@ -525,7 +562,8 @@ impl App {
             pending_host_checks: Vec::new(),
             remote_metrics: None,
             remote_metrics_rx: None,
-            last_remote_metrics_collect: std::time::Instant::now() - std::time::Duration::from_secs(10),
+            last_remote_metrics_collect: std::time::Instant::now()
+                - std::time::Duration::from_secs(10),
             sftp_rx: None,
             sftp_result_rx: None,
 
@@ -542,12 +580,10 @@ impl App {
         id
     }
 
-    
     pub fn session_index(&self, id: SessionId) -> Option<usize> {
         self.sessions.iter().position(|s| s.id == id)
     }
 
-    
     pub fn active_session_ref(&self) -> Option<&Session> {
         self.active_session.and_then(|i| self.sessions.get(i))
     }
@@ -558,11 +594,8 @@ impl App {
     }
 
     pub fn list_to_host_idx(&self, list_sel: usize) -> Option<usize> {
-        
-        
         let filtered = self.filtered_indices();
         if self.group_mode {
-            
             let hosts = &self.hosts;
             let mut current_group: Option<&str> = None;
             let mut list_pos: usize = 0;
@@ -571,7 +604,7 @@ impl App {
                 let grp = h.group.as_deref().unwrap_or("ungrouped");
                 if current_group != Some(grp) {
                     if list_pos == list_sel {
-                        return None; 
+                        return None;
                     }
                     list_pos += 1;
                     current_group = Some(grp);
@@ -646,20 +679,30 @@ impl App {
         if !self.group_mode {
             let cur = self.host_state.selected().unwrap_or(0) as i32;
             let mut next = cur + delta;
-            if next < 0 { next = 0; }
-            if next >= n as i32 { next = n as i32 - 1; }
+            if next < 0 {
+                next = 0;
+            }
+            if next >= n as i32 {
+                next = n as i32 - 1;
+            }
             self.host_state.select(Some(next as usize));
             return;
         }
-        
+
         let total = self.group_list_len();
-        if total == 0 { return; }
+        if total == 0 {
+            return;
+        }
         let cur = self.host_state.selected().unwrap_or(0) as i32;
         let mut next = cur;
         for _ in 0..total {
             next += delta;
-            if next < 0 { next = total as i32 - 1; }
-            if next >= total as i32 { next = 0; }
+            if next < 0 {
+                next = total as i32 - 1;
+            }
+            if next >= total as i32 {
+                next = 0;
+            }
             if self.list_to_host_idx(next as usize).is_some() {
                 self.host_state.select(Some(next as usize));
                 return;
@@ -675,15 +718,14 @@ impl App {
             let h = &self.hosts[*h_idx];
             let grp = h.group.as_deref().unwrap_or("ungrouped");
             if current_group != Some(grp) {
-                len += 1; 
+                len += 1;
                 current_group = Some(grp);
             }
-            len += 1; 
+            len += 1;
         }
         len
     }
 
-    
     pub fn cycle_session(&mut self, dir: i32) {
         let n = self.sessions.len();
         if n == 0 {
@@ -691,7 +733,7 @@ impl App {
         }
         let cur = self.active_session.unwrap_or(0) as i32;
         let mut next = cur + dir;
-        
+
         if next < 0 {
             next = n as i32 - 1;
         } else if next >= n as i32 {
@@ -719,7 +761,9 @@ impl App {
     }
 
     pub fn mouse_active_now(&self) -> bool {
-        self.active_session_ref().map(|s| s.mouse_active).unwrap_or(false)
+        self.active_session_ref()
+            .map(|s| s.mouse_active)
+            .unwrap_or(false)
     }
 
     pub fn save_config(&self, settings: &Settings) {

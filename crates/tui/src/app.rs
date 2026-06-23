@@ -1,14 +1,19 @@
 use crate::pty_render::TerminalView;
 use crate::settings::{draw_settings, SettingsAction, SettingsFocus};
-use crate::state::{ActiveForward, App, AppMode, EditField, Focus, HostStatus, MsgLevel, PendingDial, PromptKind, RemoteMetrics, Session, SessionStatus, SftpEntry, SftpPane, SftpState, UpdateStatus};
+use crate::state::{
+    ActiveForward, App, AppMode, EditField, Focus, HostStatus, MsgLevel, PendingDial, PromptKind,
+    RemoteMetrics, Session, SessionStatus, SftpEntry, SftpPane, SftpState, UpdateStatus,
+};
 use crate::theme::{self, Theme};
 use crate::update;
 use crate::view::{
-    draw_host_list, draw_prompt, draw_sftp, draw_status_bar,
-    draw_toasts, popup_area,
+    draw_host_list, draw_prompt, draw_sftp, draw_status_bar, draw_toasts, popup_area,
 };
 use anyhow::Result;
-use betterssh_core::{ForwardDirection, Host, Identity, PortForward, Settings, Snippet, vault_load, vault_create, vault_exists, host_id, parse_ssh_config, ssh_config_path, entries_to_hosts, merge_hosts};
+use betterssh_core::{
+    entries_to_hosts, host_id, merge_hosts, parse_ssh_config, ssh_config_path, vault_create,
+    vault_exists, vault_load, ForwardDirection, Host, Identity, PortForward, Settings, Snippet,
+};
 use betterssh_ssh::{
     exec, open_shell, AuthChoice, ClientHandler, ConnectOpts, RemoteForwards, RemoteFs, SshEvent,
 };
@@ -50,11 +55,7 @@ pub enum DialResult {
 }
 
 impl App {
-    pub async fn run(
-        mut self,
-        mut terminal: DefaultTerminal,
-        settings: Settings,
-    ) -> Result<()> {
+    pub async fn run(mut self, mut terminal: DefaultTerminal, settings: Settings) -> Result<()> {
         self.settings = settings.clone();
         self.theme = theme::load_theme(&settings.theme);
         update::check_latest();
@@ -109,8 +110,11 @@ impl App {
         match res {
             DialResult::Done(handle, rf, host_name, opts) => {
                 let session_id_str = host_name.clone();
-                
-                if let (Some(pwd), Some(vault)) = (self.last_entered_password.take(), self.master_vault.as_mut()) {
+
+                if let (Some(pwd), Some(vault)) = (
+                    self.last_entered_password.take(),
+                    self.master_vault.as_mut(),
+                ) {
                     let host_id_str = host_id(&opts.host, &opts.user);
                     if vault.get(&host_id_str).is_some() {
                         let mut secret = vault.get(&host_id_str).cloned().unwrap();
@@ -127,10 +131,18 @@ impl App {
                 self.push_toast(format!("connected {}", session_id_str), MsgLevel::Info);
             }
             DialResult::Failed(reason) => {
-                self.sessions[idx].status = SessionStatus::Disconnected(format!("connect failed: {}", reason));
+                self.sessions[idx].status =
+                    SessionStatus::Disconnected(format!("connect failed: {}", reason));
                 self.push_toast(format!("connect failed: {}", reason), MsgLevel::Bad);
-                
-                if self.active_session == Some(idx) && self.sessions.iter().all(|s| matches!(s.status, SessionStatus::Disconnected(_) | SessionStatus::Connecting)) {
+
+                if self.active_session == Some(idx)
+                    && self.sessions.iter().all(|s| {
+                        matches!(
+                            s.status,
+                            SessionStatus::Disconnected(_) | SessionStatus::Connecting
+                        )
+                    })
+                {
                     self.active_session = None;
                     self.focus = Focus::Hosts;
                 }
@@ -138,7 +150,14 @@ impl App {
         }
     }
 
-    fn spawn_shell_session(&mut self, idx: usize, handle: SharedHandle, rf: RemoteForwards, opts: ConnectOpts, host_name: String) {
+    fn spawn_shell_session(
+        &mut self,
+        idx: usize,
+        handle: SharedHandle,
+        rf: RemoteForwards,
+        opts: ConnectOpts,
+        host_name: String,
+    ) {
         let (event_tx, event_rx) = mpsc::unbounded_channel::<SshEvent>();
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<SessionCmd>();
 
@@ -166,7 +185,7 @@ impl App {
         let sess = &mut self.sessions[idx];
         sess.host_name = host_name.clone();
         sess.label = label;
-        let _ = opts; 
+        let _ = opts;
         sess.cmd_tx = Some(cmd_tx);
         sess.events = event_rx;
         sess.handle = Some(handle);
@@ -176,12 +195,10 @@ impl App {
         sess.view = TerminalView::new(pty_cols, pty_rows);
         sess.status = SessionStatus::Active;
 
-        
         if let Some(tx) = sess.cmd_tx.as_ref() {
             let _ = tx.send(SessionCmd::Resize(pty_cols, pty_rows));
         }
 
-        
         if let Some(h) = self.hosts.iter().find(|h| h.name == host_name) {
             for cmd in &h.on_connect {
                 if let Some(tx) = sess.cmd_tx.as_ref() {
@@ -192,17 +209,15 @@ impl App {
             }
         }
 
-        
         self.active_session = Some(idx);
         self.focus = Focus::Terminal;
     }
 
-    
     async fn close_session_by_index(&mut self, idx: usize) {
         if idx >= self.sessions.len() {
             return;
         }
-        
+
         if let Some(tx) = self.sessions[idx].cmd_tx.as_ref() {
             let _ = tx.send(SessionCmd::Send(b"\x1b[?1003l\x1b[?1006l".to_vec()));
             let _ = tx.send(SessionCmd::Stop);
@@ -225,31 +240,34 @@ impl App {
     fn render_frame(&mut self, f: &mut Frame, theme: &Theme) {
         let area = f.area();
 
-        
-        if self.sftp_session_id.is_some() && matches!(self.mode, AppMode::Sftp) {
-            
-        }
+        if self.sftp_session_id.is_some() && matches!(self.mode, AppMode::Sftp) {}
         if let Some(idx) = self.active_session {
             if let Some(s) = self.sessions.get(idx) {
-                if matches!(s.status, SessionStatus::Active | SessionStatus::Connecting) || s.disconnected().is_some() {
+                if matches!(s.status, SessionStatus::Active | SessionStatus::Connecting)
+                    || s.disconnected().is_some()
+                {
                     self.render_connected(f, area, theme, idx);
-                    
+
                     if let Some(sf) = &mut self.settings_focus {
                         draw_settings(f, area, sf, theme, self.settings_confirm_discard);
                     }
-                    if let AppMode::Prompt { kind, buffer, cursor } = &self.mode {
+                    if let AppMode::Prompt {
+                        kind,
+                        buffer,
+                        cursor,
+                    } = &self.mode
+                    {
                         self.render_prompt_overlay(f, area, theme, kind, buffer, *cursor);
                     }
-            if matches!(self.focus, Focus::CmdPalette) {
-                self.render_palette(f, area, theme);
-            }
-            self.render_update_banner(f, area, theme);
-            return;
+                    if matches!(self.focus, Focus::CmdPalette) {
+                        self.render_palette(f, area, theme);
+                    }
+                    self.render_update_banner(f, area, theme);
+                    return;
                 }
             }
         }
 
-        
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(1), Constraint::Length(1)])
@@ -283,7 +301,8 @@ impl App {
                 let lines = self.render_details(theme);
                 let p = Paragraph::new(lines).block(
                     ratatui::widgets::Block::default()
-                        .borders(ratatui::widgets::Borders::ALL).border_type(ratatui::widgets::BorderType::Rounded)
+                        .borders(ratatui::widgets::Borders::ALL)
+                        .border_type(ratatui::widgets::BorderType::Rounded)
                         .border_style(ratatui::style::Style::default().fg(theme.border2))
                         .title(ratatui::text::Span::styled(
                             " DETAILS ",
@@ -303,7 +322,8 @@ impl App {
                 };
                 let p = Paragraph::new(Line::from(text.clone())).block(
                     ratatui::widgets::Block::default()
-                        .borders(ratatui::widgets::Borders::ALL).border_type(ratatui::widgets::BorderType::Rounded)
+                        .borders(ratatui::widgets::Borders::ALL)
+                        .border_type(ratatui::widgets::BorderType::Rounded)
                         .border_style(ratatui::style::Style::default().fg(color)),
                 );
                 f.render_widget(p, term_area);
@@ -311,12 +331,16 @@ impl App {
             _ => {}
         }
 
-        
         if let Some(sf) = &mut self.settings_focus {
             draw_settings(f, area, sf, theme, self.settings_confirm_discard);
         }
 
-        if let AppMode::Prompt { kind, buffer, cursor } = &self.mode {
+        if let AppMode::Prompt {
+            kind,
+            buffer,
+            cursor,
+        } = &self.mode
+        {
             self.render_prompt_overlay(f, area, theme, kind, buffer, *cursor);
         }
 
@@ -367,8 +391,18 @@ impl App {
                 ("Esc", "close"),
             ],
         };
-        let capture_indicator = if self.capture_mode { Some("CAPTURE") } else { None };
-        draw_status_bar(f, status_bar_area, theme, hints, capture_indicator.or(self.status_msg.as_deref()));
+        let capture_indicator = if self.capture_mode {
+            Some("CAPTURE")
+        } else {
+            None
+        };
+        draw_status_bar(
+            f,
+            status_bar_area,
+            theme,
+            hints,
+            capture_indicator.or(self.status_msg.as_deref()),
+        );
 
         self.render_update_banner(f, area, theme);
 
@@ -377,7 +411,6 @@ impl App {
     }
 
     fn render_connected(&mut self, f: &mut Frame, area: Rect, theme: &Theme, idx: usize) {
-        
         if let Some(sid) = self.sftp_session_id {
             if Some(self.sessions[idx].id) == Some(sid) && matches!(self.mode, AppMode::Sftp) {
                 let s = self.sessions[idx].sftp_state.clone();
@@ -388,7 +421,6 @@ impl App {
             }
         }
 
-        
         let (mut lines, raw_lines, search_active, search_query, search_matches, search_current) = {
             let s = &self.sessions[idx];
             (
@@ -402,24 +434,32 @@ impl App {
         };
         if search_active && !search_query.is_empty() {
             let q: Vec<char> = search_query.chars().collect();
-            let mut line_matches: std::collections::BTreeMap<usize, Vec<(usize, usize)>> = std::collections::BTreeMap::new();
+            let mut line_matches: std::collections::BTreeMap<usize, Vec<(usize, usize)>> =
+                std::collections::BTreeMap::new();
             for (mi, &(li, ci)) in search_matches.iter().enumerate() {
                 line_matches.entry(li).or_default().push((mi, ci));
             }
             for (&li, matches) in &line_matches {
-                if li >= raw_lines.len() || li >= lines.len() { continue; }
+                if li >= raw_lines.len() || li >= lines.len() {
+                    continue;
+                }
                 let line_str = raw_lines[li].as_str();
                 let mut spans: Vec<Span> = Vec::new();
                 let mut pos = 0;
                 for &(mi, ci) in matches {
-                    if ci < pos || ci + q.len() > line_str.len() { continue; }
+                    if ci < pos || ci + q.len() > line_str.len() {
+                        continue;
+                    }
                     if ci > pos {
                         spans.push(Span::raw(line_str[pos..ci].to_string()));
                     }
                     let is_current = mi == search_current;
                     let bg = if is_current { theme.bad } else { theme.warn };
                     let fg = if is_current { theme.bg } else { theme.txt };
-                    spans.push(Span::styled(line_str[ci..ci + q.len()].to_string(), Style::default().bg(bg).fg(fg)));
+                    spans.push(Span::styled(
+                        line_str[ci..ci + q.len()].to_string(),
+                        Style::default().bg(bg).fg(fg),
+                    ));
                     pos = ci + q.len();
                 }
                 if pos < line_str.len() {
@@ -433,56 +473,117 @@ impl App {
         let host_title = format!(" {} ", self.sessions[idx].host_name);
         let mouse_on = self.sessions[idx].mouse_active;
 
-        let bar_height: u16 = if matches!(self.focus, Focus::TermSearch) { 2 } else { 1 };
+        let bar_height: u16 = if matches!(self.focus, Focus::TermSearch) {
+            2
+        } else {
+            1
+        };
         let outer_chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Min(1), Constraint::Length(bar_height)])
+            .constraints([
+                Constraint::Length(1),
+                Constraint::Min(1),
+                Constraint::Length(bar_height),
+            ])
             .split(area);
 
         let metrics_area = outer_chunks[0];
         let term_area = outer_chunks[1];
         let bar_area = outer_chunks[2];
 
-        
         if !self.settings.show_metrics {
             f.render_widget(
                 Paragraph::new(Line::from(Span::raw(""))).style(Style::default().bg(theme.panel)),
                 metrics_area,
             );
         } else {
-        let use_remote = self.remote_metrics.is_some() && self.active_session.is_some();
-        let m: &RemoteMetrics = self.remote_metrics.as_ref().unwrap_or(&self.metrics);
-        let up_str = format_duration(m.uptime_secs);
-        let net_down = format_network_speed(m.net_down_kbs);
-        let net_up = format_network_speed(m.net_up_kbs);
-        let host_tag = if use_remote {
-            if let Some(idx) = self.active_session {
-                format!(" {} ", self.sessions[idx].host_name)
-            } else { String::new() }
-        } else { String::new() };
-        let cpu_color = if m.cpu_pct > 80.0 { theme.cpu_high } else if m.cpu_pct > 50.0 { theme.cpu_mid } else { theme.cpu_low };
-        let ram_pct = if m.ram_total_mb > 0 { m.ram_used_mb as f32 / m.ram_total_mb as f32 * 100.0 } else { 0.0 };
-        let ram_color = if ram_pct > 80.0 { theme.mem_high } else if ram_pct > 50.0 { theme.mem_mid } else { theme.mem_low };
-        let disk_pct = if m.disk_total_gb > 0.0 { m.disk_used_gb / m.disk_total_gb * 100.0 } else { 0.0 };
-        let disk_color = if disk_pct > 80.0 { theme.mem_high } else if disk_pct > 50.0 { theme.mem_mid } else { theme.mem_low };
-        let mut spans = vec![
-            Span::styled(format!(" CPU {:.0}% ", m.cpu_pct), Style::default().fg(cpu_color).bg(theme.surface)),
-            Span::styled(format!(" MEM {}/{}mb ", m.ram_used_mb, m.ram_total_mb), Style::default().fg(ram_color).bg(theme.surface)),
-            Span::styled(format!(" DSK {} ", format_disk(m.disk_total_gb, m.disk_used_gb)), Style::default().fg(disk_color).bg(theme.surface)),
-            Span::styled(format!(" \u{2193}{} \u{2191}{} ", net_down, net_up), Style::default().fg(theme.txt).bg(theme.surface)),
-            Span::styled(format!(" LD {:.1} ", m.load_1), Style::default().fg(theme.dim).bg(theme.surface)),
-            Span::styled(format!(" UP {} ", up_str), Style::default().fg(theme.dim).bg(theme.surface)),
-            Span::styled(format!(" {} ses ", self.sessions.len()), Style::default().fg(theme.accent2).bg(theme.surface)),
-        ];
-        if use_remote {
-            spans.push(Span::styled(host_tag, Style::default().fg(theme.good).bg(theme.panel2)));
+            let use_remote = self.remote_metrics.is_some() && self.active_session.is_some();
+            let m: &RemoteMetrics = self.remote_metrics.as_ref().unwrap_or(&self.metrics);
+            let up_str = format_duration(m.uptime_secs);
+            let net_down = format_network_speed(m.net_down_kbs);
+            let net_up = format_network_speed(m.net_up_kbs);
+            let host_tag = if use_remote {
+                if let Some(idx) = self.active_session {
+                    format!(" {} ", self.sessions[idx].host_name)
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+            let cpu_color = if m.cpu_pct > 80.0 {
+                theme.cpu_high
+            } else if m.cpu_pct > 50.0 {
+                theme.cpu_mid
+            } else {
+                theme.cpu_low
+            };
+            let ram_pct = if m.ram_total_mb > 0 {
+                m.ram_used_mb as f32 / m.ram_total_mb as f32 * 100.0
+            } else {
+                0.0
+            };
+            let ram_color = if ram_pct > 80.0 {
+                theme.mem_high
+            } else if ram_pct > 50.0 {
+                theme.mem_mid
+            } else {
+                theme.mem_low
+            };
+            let disk_pct = if m.disk_total_gb > 0.0 {
+                m.disk_used_gb / m.disk_total_gb * 100.0
+            } else {
+                0.0
+            };
+            let disk_color = if disk_pct > 80.0 {
+                theme.mem_high
+            } else if disk_pct > 50.0 {
+                theme.mem_mid
+            } else {
+                theme.mem_low
+            };
+            let mut spans = vec![
+                Span::styled(
+                    format!(" CPU {:.0}% ", m.cpu_pct),
+                    Style::default().fg(cpu_color).bg(theme.surface),
+                ),
+                Span::styled(
+                    format!(" MEM {}/{}mb ", m.ram_used_mb, m.ram_total_mb),
+                    Style::default().fg(ram_color).bg(theme.surface),
+                ),
+                Span::styled(
+                    format!(" DSK {} ", format_disk(m.disk_total_gb, m.disk_used_gb)),
+                    Style::default().fg(disk_color).bg(theme.surface),
+                ),
+                Span::styled(
+                    format!(" \u{2193}{} \u{2191}{} ", net_down, net_up),
+                    Style::default().fg(theme.txt).bg(theme.surface),
+                ),
+                Span::styled(
+                    format!(" LD {:.1} ", m.load_1),
+                    Style::default().fg(theme.dim).bg(theme.surface),
+                ),
+                Span::styled(
+                    format!(" UP {} ", up_str),
+                    Style::default().fg(theme.dim).bg(theme.surface),
+                ),
+                Span::styled(
+                    format!(" {} ses ", self.sessions.len()),
+                    Style::default().fg(theme.accent2).bg(theme.surface),
+                ),
+            ];
+            if use_remote {
+                spans.push(Span::styled(
+                    host_tag,
+                    Style::default().fg(theme.good).bg(theme.panel2),
+                ));
+            }
+            let metrics_line = Line::from(spans);
+            f.render_widget(
+                Paragraph::new(metrics_line).style(Style::default().bg(theme.panel)),
+                metrics_area,
+            );
         }
-        let metrics_line = Line::from(spans);
-        f.render_widget(
-            Paragraph::new(metrics_line).style(Style::default().bg(theme.panel)),
-            metrics_area,
-        );
-        }  
 
         let show_cursor = matches!(self.focus, Focus::Terminal) && scroll == 0;
         let (cx, cy) = (cursor_col, cursor_row);
@@ -506,7 +607,6 @@ impl App {
             f.set_cursor_position((inner.x + cx, inner.y + cy));
         }
 
-        
         let (tab_area, search_bar_area) = if matches!(self.focus, Focus::TermSearch) {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
@@ -520,29 +620,33 @@ impl App {
         if let Some(sba) = search_bar_area {
             let bar_extra = if idx < self.sessions.len() {
                 let total = self.sessions[idx].search.matches.len();
-                let cur = if total > 0 { self.sessions[idx].search.current + 1 } else { 0 };
+                let cur = if total > 0 {
+                    self.sessions[idx].search.current + 1
+                } else {
+                    0
+                };
                 format!(" {}/{} ", cur, total)
             } else {
                 String::new()
             };
             let search_text = format!("/ {}{}", self.sessions[idx].search.query, bar_extra);
-            let search_span = Span::styled(
-                search_text,
-                Style::default().fg(theme.txt).bg(theme.accent),
-            );
+            let search_span =
+                Span::styled(search_text, Style::default().fg(theme.txt).bg(theme.accent));
             f.render_widget(
                 Paragraph::new(Line::from(search_span)).style(Style::default().bg(theme.panel)),
                 sba,
             );
         }
 
-        
         let tab_chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Min(15), Constraint::Min(10), Constraint::Min(40)])
+            .constraints([
+                Constraint::Min(15),
+                Constraint::Min(10),
+                Constraint::Min(40),
+            ])
             .split(tab_area);
 
-        
         let mut tabs_spans: Vec<Span> = Vec::new();
         for (i, s) in self.sessions.iter().enumerate() {
             let is_active = i == idx;
@@ -551,7 +655,11 @@ impl App {
                 SessionStatus::Active => ("\u{25cf}", theme.good),
                 SessionStatus::Disconnected(_) => ("\u{2716}", theme.bad),
             };
-            let bg = if is_active { theme.accent2 } else { theme.surface };
+            let bg = if is_active {
+                theme.accent2
+            } else {
+                theme.surface
+            };
             let fg = if is_active { theme.bg } else { status_fg };
             let label = format!(" #{}.{} {} ", i + 1, icon, truncate(&s.host_name, 12));
             tabs_spans.push(Span::styled(label, Style::default().fg(fg).bg(bg)));
@@ -564,15 +672,15 @@ impl App {
             );
         } else {
             f.render_widget(
-                Paragraph::new(Line::from(Span::styled(" (no sessions)", Style::default().fg(theme.dim)))),
+                Paragraph::new(Line::from(Span::styled(
+                    " (no sessions)",
+                    Style::default().fg(theme.dim),
+                ))),
                 tab_chunks[0],
             );
         }
 
-        let title_line = Line::from(Span::styled(
-            &host_title,
-            Style::default().fg(theme.dim),
-        ));
+        let title_line = Line::from(Span::styled(&host_title, Style::default().fg(theme.dim)));
         f.render_widget(
             Paragraph::new(title_line).style(Style::default().bg(theme.panel)),
             tab_chunks[1],
@@ -587,7 +695,12 @@ impl App {
             Span::styled(" close ", Style::default().fg(theme.txt)),
             Span::styled("S", Style::default().fg(theme.bg).bg(theme.accent)),
             Span::styled(" sftp ", Style::default().fg(theme.txt)),
-            Span::styled(mouse_str.as_str(), Style::default().fg(theme.txt).bg(if mouse_on { theme.bad } else { theme.panel2 })),
+            Span::styled(
+                mouse_str.as_str(),
+                Style::default()
+                    .fg(theme.txt)
+                    .bg(if mouse_on { theme.bad } else { theme.panel2 }),
+            ),
             Span::styled("\\", Style::default().fg(theme.bg).bg(theme.warn)),
             Span::styled(" cap ", Style::default().fg(theme.txt)),
             Span::styled("Tab", Style::default().fg(theme.bg).bg(theme.accent)),
@@ -620,14 +733,32 @@ impl App {
             ("/", "filter"),
             ("Esc", "back"),
         ];
-        let cap = if self.capture_mode { Some("CAPTURE") } else { None };
-        draw_status_bar(f, chunks[1], theme, &hints, cap.or(self.status_msg.as_deref()));
+        let cap = if self.capture_mode {
+            Some("CAPTURE")
+        } else {
+            None
+        };
+        draw_status_bar(
+            f,
+            chunks[1],
+            theme,
+            &hints,
+            cap.or(self.status_msg.as_deref()),
+        );
 
         self.toasts.retain(|t| std::time::Instant::now() < t.until);
         draw_toasts(f, area, theme, &self.toasts);
     }
 
-    fn render_prompt_overlay(&self, f: &mut Frame, area: Rect, theme: &Theme, kind: &PromptKind, buffer: &str, cursor: usize) {
+    fn render_prompt_overlay(
+        &self,
+        f: &mut Frame,
+        area: Rect,
+        theme: &Theme,
+        kind: &PromptKind,
+        buffer: &str,
+        cursor: usize,
+    ) {
         let label = prompt_label(kind, buffer);
         let hidden = matches!(
             kind,
@@ -646,10 +777,13 @@ impl App {
 
     fn render_palette(&self, f: &mut Frame, area: Rect, theme: &Theme) {
         let items = self.palette_items();
-        let filtered: Vec<&(String, String)> = items.iter()
+        let filtered: Vec<&(String, String)> = items
+            .iter()
             .filter(|(label, _)| {
                 self.palette_filter.is_empty()
-                    || label.to_lowercase().contains(&self.palette_filter.to_lowercase())
+                    || label
+                        .to_lowercase()
+                        .contains(&self.palette_filter.to_lowercase())
             })
             .collect();
 
@@ -657,7 +791,7 @@ impl App {
         let w = 50.min(area.width.saturating_sub(4));
         let popup = Rect {
             x: (area.width.saturating_sub(w)) / 2,
-            y: area.y.saturating_add(1), 
+            y: area.y.saturating_add(1),
             width: w,
             height: h,
         };
@@ -665,7 +799,12 @@ impl App {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(theme.accent))
-            .title(Span::styled(" Command Palette ", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)))
+            .title(Span::styled(
+                " Command Palette ",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))
             .style(Style::default().bg(theme.panel));
         let inner = block.inner(popup);
         f.render_widget(Clear, popup);
@@ -676,13 +815,14 @@ impl App {
             .constraints([Constraint::Length(1), Constraint::Min(1)])
             .split(inner);
 
-        
         let filter_text = format!("> {}", self.palette_filter);
-        let filter_para = Paragraph::new(Line::from(Span::styled(filter_text, Style::default().fg(theme.txt))))
-            .style(Style::default().bg(theme.surface));
+        let filter_para = Paragraph::new(Line::from(Span::styled(
+            filter_text,
+            Style::default().fg(theme.txt),
+        )))
+        .style(Style::default().bg(theme.surface));
         f.render_widget(filter_para, chunks[0]);
 
-        
         let mut list_items: Vec<ListItem> = Vec::new();
         for (i, (label, key)) in filtered.iter().enumerate() {
             let selected = i == self.palette_selected.min(filtered.len().saturating_sub(1));
@@ -728,14 +868,21 @@ impl App {
         let addr = h.addr();
         let user = h.user.clone();
         let group = h.group.clone().unwrap_or_else(|| "-".to_string());
-        let tags = if h.tags.is_empty() { "-".to_string() } else { h.tags.join(", ") };
+        let tags = if h.tags.is_empty() {
+            "-".to_string()
+        } else {
+            h.tags.join(", ")
+        };
         let jump = h.jump.clone().unwrap_or_else(|| "-".to_string());
         let keepalive = format!("{}s", h.keepalive.unwrap_or(0));
         let address = format!("{}@{}", user, addr);
         vec![
             Line::from(vec![
                 Span::styled(" Name     ", Style::default().fg(theme.dim)),
-                Span::styled(name, Style::default().fg(theme.txt).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    name,
+                    Style::default().fg(theme.txt).add_modifier(Modifier::BOLD),
+                ),
             ]),
             Line::from(vec![
                 Span::styled(" Address  ", Style::default().fg(theme.dim)),
@@ -751,7 +898,14 @@ impl App {
             ]),
             Line::from(vec![
                 Span::styled(" Auth     ", Style::default().fg(theme.dim)),
-                Span::styled(if auth_str.is_empty() { "-".into() } else { auth_str }, Style::default().fg(theme.txt)),
+                Span::styled(
+                    if auth_str.is_empty() {
+                        "-".into()
+                    } else {
+                        auth_str
+                    },
+                    Style::default().fg(theme.txt),
+                ),
             ]),
             Line::from(vec![
                 Span::styled(" Jump     ", Style::default().fg(theme.dim)),
@@ -764,7 +918,11 @@ impl App {
             Line::from(vec![
                 Span::styled(" On conn  ", Style::default().fg(theme.dim)),
                 Span::styled(
-                    if h.on_connect.is_empty() { "-".into() } else { h.on_connect.join("; ") },
+                    if h.on_connect.is_empty() {
+                        "-".into()
+                    } else {
+                        h.on_connect.join("; ")
+                    },
                     Style::default().fg(theme.txt),
                 ),
             ]),
@@ -797,13 +955,19 @@ impl App {
                             Span::raw("  "),
                             Span::styled("\u{2726}", Style::default().fg(theme.accent)),
                             Span::raw(format!(" v{} ready  ", ver)),
-                            Span::styled(format!("(you have v{})", cur), Style::default().fg(theme.dim)),
+                            Span::styled(
+                                format!("(you have v{})", cur),
+                                Style::default().fg(theme.dim),
+                            ),
                         ]),
                         Line::from(vec![
                             Span::raw("  "),
                             Span::styled(" u ", Style::default().fg(theme.sel_bg).bg(theme.sel_fg)),
                             Span::raw(" install  "),
-                            Span::styled(" Esc ", Style::default().fg(theme.sel_bg).bg(theme.sel_fg)),
+                            Span::styled(
+                                " Esc ",
+                                Style::default().fg(theme.sel_bg).bg(theme.sel_fg),
+                            ),
                             Span::raw(" dismiss"),
                         ]),
                     ],
@@ -820,13 +984,14 @@ impl App {
             ),
             UpdateStatus::Done => (
                 " Update Installed ",
-                vec![
-                    Line::from(vec![
-                        Span::styled("  \u{2713} ", Style::default().fg(theme.good)),
-                        Span::styled(format!("v{}", self.update_latest_version), Style::default().fg(theme.accent)),
-                        Span::raw(" installed! Restart betterssh to use."),
-                    ]),
-                ],
+                vec![Line::from(vec![
+                    Span::styled("  \u{2713} ", Style::default().fg(theme.good)),
+                    Span::styled(
+                        format!("v{}", self.update_latest_version),
+                        Style::default().fg(theme.accent),
+                    ),
+                    Span::raw(" installed! Restart betterssh to use."),
+                ])],
                 false,
             ),
             UpdateStatus::Failed(e) => (
@@ -853,7 +1018,10 @@ impl App {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(border_c))
-            .title(Span::styled(title, Style::default().fg(border_c).add_modifier(Modifier::BOLD)))
+            .title(Span::styled(
+                title,
+                Style::default().fg(border_c).add_modifier(Modifier::BOLD),
+            ))
             .style(Style::default().bg(theme.surface));
         let inner = block.inner(popup);
         f.render_widget(Clear, popup);
@@ -871,7 +1039,12 @@ impl App {
         }
     }
 
-    fn handle_event(&mut self, evt: Event, cmd_tx: &mpsc::UnboundedSender<Cmd>, settings: &Arc<Settings>) {
+    fn handle_event(
+        &mut self,
+        evt: Event,
+        cmd_tx: &mpsc::UnboundedSender<Cmd>,
+        settings: &Arc<Settings>,
+    ) {
         match evt {
             Event::Key(k) => {
                 if k.kind == KeyEventKind::Press || k.kind == KeyEventKind::Repeat {
@@ -884,7 +1057,6 @@ impl App {
                 }
                 let active_idx = self.active_session;
 
-                
                 match m.kind {
                     crossterm::event::MouseEventKind::ScrollUp => {
                         if let Some(idx) = active_idx {
@@ -905,7 +1077,6 @@ impl App {
                     _ => {}
                 }
 
-                
                 let mouse_active = active_idx
                     .and_then(|idx| self.sessions.get(idx))
                     .map(|s| s.mouse_active)
@@ -956,11 +1127,21 @@ impl App {
             }
             Event::Resize(cols, rows) => {
                 let active_idx = self.active_session;
-                let bar_height = if matches!(self.focus, Focus::TermSearch) { 2u16 } else { 1u16 };
-                let (term_cols, term_rows) = if active_idx.is_some() {
-                    (cols.saturating_sub(2).max(20), rows.saturating_sub(1 + bar_height + 2).max(5))
+                let bar_height = if matches!(self.focus, Focus::TermSearch) {
+                    2u16
                 } else {
-                    (cols.saturating_sub(34).max(20), rows.saturating_sub(1).max(5))
+                    1u16
+                };
+                let (term_cols, term_rows) = if active_idx.is_some() {
+                    (
+                        cols.saturating_sub(2).max(20),
+                        rows.saturating_sub(1 + bar_height + 2).max(5),
+                    )
+                } else {
+                    (
+                        cols.saturating_sub(34).max(20),
+                        rows.saturating_sub(1).max(5),
+                    )
                 };
                 self.term_cols = term_cols;
                 self.term_rows = term_rows;
@@ -971,15 +1152,21 @@ impl App {
         }
     }
 
-    fn handle_key(&mut self, k: KeyEvent, cmd_tx: &mpsc::UnboundedSender<Cmd>, settings: &Arc<Settings>) {
-        
+    fn handle_key(
+        &mut self,
+        k: KeyEvent,
+        cmd_tx: &mpsc::UnboundedSender<Cmd>,
+        settings: &Arc<Settings>,
+    ) {
         let key_str = key_event_to_string(&k);
         if !key_str.is_empty() {
-            if let Some(action) = self.settings.keybindings.iter()
+            if let Some(action) = self
+                .settings
+                .keybindings
+                .iter()
                 .find(|(_, v)| v == &&key_str)
                 .map(|(k, _)| k.clone())
             {
-                
                 match action.as_str() {
                     "command_palette" => {
                         if !matches!(self.focus, Focus::CmdPalette) {
@@ -989,13 +1176,22 @@ impl App {
                             return;
                         }
                     }
-                    "quit" => { self.should_quit = true; return; }
-                    "save_config" => { self.save_config(settings); return; }
+                    "quit" => {
+                        self.should_quit = true;
+                        return;
+                    }
+                    "save_config" => {
+                        self.save_config(settings);
+                        return;
+                    }
                     "toggle_group" => {
                         self.group_mode = !self.group_mode;
                         return;
                     }
-                    "import_ssh" => { let _ = self.import_ssh_config(); return; }
+                    "import_ssh" => {
+                        let _ = self.import_ssh_config();
+                        return;
+                    }
                     "new_host" => {
                         self.mode = AppMode::Prompt {
                             kind: PromptKind::NewHost,
@@ -1004,17 +1200,19 @@ impl App {
                         };
                         return;
                     }
-                    "open_settings" => { self.open_settings(); return; }
+                    "open_settings" => {
+                        self.open_settings();
+                        return;
+                    }
                     "update" => {
                         update::do_install();
                         return;
                     }
-                    _ => {} 
+                    _ => {}
                 }
             }
         }
 
-        
         if matches!(self.update_status, UpdateStatus::Available) && !self.update_dismissed {
             match k.code {
                 KeyCode::Char('u') | KeyCode::Char('U') => {
@@ -1029,14 +1227,15 @@ impl App {
                 _ => {}
             }
         }
-        if matches!(self.update_status, UpdateStatus::Done | UpdateStatus::Failed(_))
-            && k.code == KeyCode::Esc
+        if matches!(
+            self.update_status,
+            UpdateStatus::Done | UpdateStatus::Failed(_)
+        ) && k.code == KeyCode::Esc
         {
             self.update_status = UpdateStatus::Idle;
             return;
         }
 
-        
         if !matches!(self.focus, Focus::CmdPalette)
             && k.modifiers.contains(KeyModifiers::CONTROL)
             && k.code == KeyCode::Char('p')
@@ -1047,9 +1246,12 @@ impl App {
             return;
         }
 
-        
-        if k.modifiers.contains(KeyModifiers::CONTROL) && !k.modifiers.contains(KeyModifiers::ALT) && self.active_session.is_some()
-            && (k.code == KeyCode::Char('b') || k.code == KeyCode::Char('B') || k.code == KeyCode::Char('\\'))
+        if k.modifiers.contains(KeyModifiers::CONTROL)
+            && !k.modifiers.contains(KeyModifiers::ALT)
+            && self.active_session.is_some()
+            && (k.code == KeyCode::Char('b')
+                || k.code == KeyCode::Char('B')
+                || k.code == KeyCode::Char('\\'))
         {
             self.capture_mode = !self.capture_mode;
             self.focus = Focus::Terminal;
@@ -1061,7 +1263,6 @@ impl App {
             return;
         }
 
-        
         if k.modifiers.contains(KeyModifiers::ALT) && k.code == KeyCode::Char('m') {
             if let Some(idx) = self.active_session {
                 if idx < self.sessions.len() {
@@ -1084,15 +1285,12 @@ impl App {
             return;
         }
 
-        
         if matches!(self.mode, AppMode::Sftp) {
             self.handle_sftp_key(k, cmd_tx);
             return;
         }
 
-        
         if let Some(idx) = self.active_session {
-            
             if (k.code == KeyCode::Tab || k.code == KeyCode::BackTab)
                 && !k.modifiers.contains(KeyModifiers::CONTROL)
                 && !self.capture_mode
@@ -1100,16 +1298,18 @@ impl App {
                 let dir = if k.code == KeyCode::BackTab { -1 } else { 1 };
                 let prev = self.active_session;
                 self.cycle_session(dir);
-                
+
                 self.focus = Focus::Terminal;
                 if self.active_session != prev {
                     self.sync_mouse_capture();
-                    self.push_toast(format!("session {}", self.active_session.unwrap() + 1), MsgLevel::Info);
+                    self.push_toast(
+                        format!("session {}", self.active_session.unwrap() + 1),
+                        MsgLevel::Info,
+                    );
                 }
                 return;
             }
 
-            
             if !self.capture_mode
                 && k.modifiers.contains(KeyModifiers::CONTROL)
                 && k.code == KeyCode::Char('q')
@@ -1122,7 +1322,6 @@ impl App {
                 return;
             }
 
-            
             if !self.capture_mode
                 && k.modifiers.contains(KeyModifiers::CONTROL)
                 && (k.code == KeyCode::Char('w') || k.code == KeyCode::Char('W'))
@@ -1135,7 +1334,6 @@ impl App {
                 return;
             }
 
-            
             if !self.capture_mode
                 && k.modifiers.contains(KeyModifiers::CONTROL)
                 && k.code == KeyCode::Char('t')
@@ -1145,7 +1343,6 @@ impl App {
                 return;
             }
 
-            
             if !self.capture_mode
                 && k.modifiers.contains(KeyModifiers::CONTROL)
                 && k.code == KeyCode::Char('n')
@@ -1155,13 +1352,11 @@ impl App {
                 return;
             }
 
-            
             if matches!(self.focus, Focus::CmdPalette) {
                 self.handle_palette_key(k, cmd_tx, settings);
                 return;
             }
 
-            
             if !self.capture_mode
                 && k.modifiers.contains(KeyModifiers::CONTROL)
                 && k.code == KeyCode::Char('p')
@@ -1172,7 +1367,6 @@ impl App {
                 return;
             }
 
-            
             if k.modifiers.is_empty()
                 && (k.code == KeyCode::Char('[') || k.code == KeyCode::Char(']'))
                 && matches!(self.focus, Focus::Hosts | Focus::Search)
@@ -1183,18 +1377,19 @@ impl App {
                 if self.active_session != prev {
                     self.focus = Focus::Terminal;
                     self.sync_mouse_capture();
-                    self.push_toast(format!("session {}", self.active_session.unwrap() + 1), MsgLevel::Info);
+                    self.push_toast(
+                        format!("session {}", self.active_session.unwrap() + 1),
+                        MsgLevel::Info,
+                    );
                 }
                 return;
             }
 
-            
             if matches!(self.focus, Focus::Hosts) {
                 self.handle_hosts_key(k, cmd_tx, settings);
                 return;
             }
 
-            
             if !self.capture_mode
                 && k.modifiers.contains(KeyModifiers::CONTROL)
                 && k.code == KeyCode::Char('s')
@@ -1205,7 +1400,6 @@ impl App {
                 return;
             }
 
-            
             if !self.capture_mode
                 && k.modifiers.is_empty()
                 && matches!(k.code, KeyCode::Char(c) if c.is_ascii_digit() && c != '0')
@@ -1225,7 +1419,6 @@ impl App {
                 }
             }
 
-            
             if k.code == KeyCode::PageUp {
                 if let Some(sess) = self.sessions.get_mut(idx) {
                     sess.view.scroll_up(5);
@@ -1239,7 +1432,6 @@ impl App {
                 return;
             }
 
-            
             if k.code == KeyCode::F(2) && !self.capture_mode {
                 if let Some(s) = self.sessions.get(idx) {
                     let current = s.label.clone();
@@ -1253,7 +1445,6 @@ impl App {
                 return;
             }
 
-            
             if !self.capture_mode
                 && k.modifiers.contains(KeyModifiers::CONTROL)
                 && k.code == KeyCode::Char('f')
@@ -1265,7 +1456,6 @@ impl App {
                 return;
             }
 
-            
             if self.capture_mode {
                 if let Some(sess) = self.sessions.get_mut(idx) {
                     let bytes = key_to_bytes(k);
@@ -1278,7 +1468,6 @@ impl App {
                 return;
             }
 
-            
             if let Some(sess) = self.sessions.get_mut(idx) {
                 let bytes = key_to_bytes(k);
                 if bytes.is_empty() {
@@ -1293,13 +1482,17 @@ impl App {
             return;
         }
 
-        
         if !self.sessions.is_empty() && !matches!(self.mode, AppMode::Prompt { .. }) {
-            
-            if k.code == KeyCode::Tab && !k.modifiers.contains(KeyModifiers::CONTROL) && !self.capture_mode {
+            if k.code == KeyCode::Tab
+                && !k.modifiers.contains(KeyModifiers::CONTROL)
+                && !self.capture_mode
+            {
                 self.focus = Focus::Terminal;
-                
-                let first = self.sessions.iter().position(|s| s.is_active() || s.disconnected().is_some())
+
+                let first = self
+                    .sessions
+                    .iter()
+                    .position(|s| s.is_active() || s.disconnected().is_some())
                     .or(self.active_session);
                 if let Some(i) = first {
                     self.active_session = Some(i);
@@ -1308,12 +1501,11 @@ impl App {
             }
         }
 
-        
         if matches!(self.mode, AppMode::Prompt { .. }) {
             self.handle_prompt_key(k, settings);
             return;
         }
-        
+
         if matches!(self.mode, AppMode::Sftp) {
             self.handle_sftp_key(k, cmd_tx);
             return;
@@ -1379,11 +1571,18 @@ impl App {
                 self.settings_confirm_discard = true;
             }
             Some(SettingsAction::EditKeybinding { idx }) => {
-                let entries: Vec<(String, String)> = self.settings.keybindings.iter()
-                    .map(|(k, v)| (k.clone(), v.clone())).collect();
+                let entries: Vec<(String, String)> = self
+                    .settings
+                    .keybindings
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
                 if let Some((action, current)) = entries.get(idx) {
                     self.mode = AppMode::Prompt {
-                        kind: PromptKind::KeybindingEdit { action: action.clone(), current: current.clone() },
+                        kind: PromptKind::KeybindingEdit {
+                            action: action.clone(),
+                            current: current.clone(),
+                        },
                         buffer: current.clone(),
                         cursor: current.len(),
                     };
@@ -1399,18 +1598,22 @@ impl App {
             Some(SettingsAction::EditMacro { idx }) => {
                 if let Some(m) = self.settings.macros.get(idx) {
                     self.mode = AppMode::Prompt {
-                        kind: PromptKind::MacroName { current: m.name.clone() },
+                        kind: PromptKind::MacroName {
+                            current: m.name.clone(),
+                        },
                         buffer: m.name.clone(),
                         cursor: m.name.len(),
                     };
-                    
+
                     self.edit_target = Some(format!("macro_{}", idx));
                 }
             }
             Some(SettingsAction::AddMacro) => {
                 self.edit_target = None;
                 self.mode = AppMode::Prompt {
-                    kind: PromptKind::MacroName { current: String::new() },
+                    kind: PromptKind::MacroName {
+                        current: String::new(),
+                    },
                     buffer: String::new(),
                     cursor: 0,
                 };
@@ -1436,7 +1639,7 @@ impl App {
         let added = self.hosts.len() - before;
         self.status_msg = Some(format!("imported {} hosts from ~/.ssh/config", added));
         self.save_config(&self.settings);
-        
+
         self.host_state.select(Some(0));
         Ok(())
     }
@@ -1471,7 +1674,11 @@ impl App {
             self.focus = Focus::Hosts;
             let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
         } else {
-            let new_idx = if idx >= self.sessions.len() { self.sessions.len() - 1 } else { idx };
+            let new_idx = if idx >= self.sessions.len() {
+                self.sessions.len() - 1
+            } else {
+                idx
+            };
             self.active_session = Some(new_idx);
             self.focus = Focus::Terminal;
             self.sync_mouse_capture();
@@ -1509,13 +1716,12 @@ impl App {
 
         match (k.code, k.modifiers) {
             (KeyCode::Esc, _) | (KeyCode::Char('q'), _) => {
-                
                 self.sessions[idx].sftp_state = None;
                 self.sftp_session_id = None;
                 if matches!(self.mode, AppMode::Sftp) {
                     self.mode = AppMode::Browsing;
                 }
-                
+
                 if self.active_session.is_none() {
                     self.active_session = Some(idx);
                 }
@@ -1582,7 +1788,12 @@ impl App {
         }
     }
 
-    fn handle_hosts_key(&mut self, k: KeyEvent, cmd_tx: &mpsc::UnboundedSender<Cmd>, settings: &Arc<Settings>) {
+    fn handle_hosts_key(
+        &mut self,
+        k: KeyEvent,
+        cmd_tx: &mpsc::UnboundedSender<Cmd>,
+        settings: &Arc<Settings>,
+    ) {
         match (k.code, k.modifiers) {
             (KeyCode::Char('q'), _) | (KeyCode::Esc, _) => {
                 self.should_quit = true;
@@ -1637,7 +1848,10 @@ impl App {
             }
             (KeyCode::Char('p'), _) => {
                 if let Some(h) = self.selected_host().cloned() {
-                    let has = h.identity.iter().any(|i| matches!(i, Identity::Password { .. }));
+                    let has = h
+                        .identity
+                        .iter()
+                        .any(|i| matches!(i, Identity::Password { .. }));
                     let initial = if has { "y".into() } else { String::new() };
                     let cur = initial.len();
                     self.mode = AppMode::Prompt {
@@ -1677,10 +1891,17 @@ impl App {
             }
             (KeyCode::Char('g'), _) => {
                 self.group_mode = !self.group_mode;
-                self.status_msg = Some(if self.group_mode { "group view on".into() } else { "group view off".into() });
+                self.status_msg = Some(if self.group_mode {
+                    "group view on".into()
+                } else {
+                    "group view off".into()
+                });
                 self.host_state.select(Some(0));
-                
-                if self.group_mode && self.selected_host().is_none() && self.host_state.selected() == Some(0) {
+
+                if self.group_mode
+                    && self.selected_host().is_none()
+                    && self.host_state.selected() == Some(0)
+                {
                     self.move_selection(1);
                 }
             }
@@ -1694,12 +1915,20 @@ impl App {
         self.focus = Focus::Settings;
     }
 
-    fn handle_terminal_key(&mut self, _k: KeyEvent, _cmd_tx: &mpsc::UnboundedSender<Cmd>, _settings: &Arc<Settings>) {
-        
-        
+    fn handle_terminal_key(
+        &mut self,
+        _k: KeyEvent,
+        _cmd_tx: &mpsc::UnboundedSender<Cmd>,
+        _settings: &Arc<Settings>,
+    ) {
     }
 
-    fn handle_search_key(&mut self, k: KeyEvent, _cmd_tx: &mpsc::UnboundedSender<Cmd>, _settings: &Arc<Settings>) {
+    fn handle_search_key(
+        &mut self,
+        k: KeyEvent,
+        _cmd_tx: &mpsc::UnboundedSender<Cmd>,
+        _settings: &Arc<Settings>,
+    ) {
         match k.code {
             KeyCode::Esc => {
                 self.filter.clear();
@@ -1718,7 +1947,12 @@ impl App {
         }
     }
 
-    fn handle_term_search_key(&mut self, k: KeyEvent, _cmd_tx: &mpsc::UnboundedSender<Cmd>, _settings: &Arc<Settings>) {
+    fn handle_term_search_key(
+        &mut self,
+        k: KeyEvent,
+        _cmd_tx: &mpsc::UnboundedSender<Cmd>,
+        _settings: &Arc<Settings>,
+    ) {
         match k.code {
             KeyCode::Esc => {
                 if let Some(idx) = self.active_session {
@@ -1734,7 +1968,8 @@ impl App {
                 if let Some(idx) = self.active_session {
                     if let Some(sess) = self.sessions.get_mut(idx) {
                         if !sess.search.matches.is_empty() {
-                            sess.search.current = (sess.search.current + 1) % sess.search.matches.len();
+                            sess.search.current =
+                                (sess.search.current + 1) % sess.search.matches.len();
                         }
                     }
                 }
@@ -1753,7 +1988,8 @@ impl App {
                     if let Some(sess) = self.sessions.get_mut(idx) {
                         sess.search.query.pop();
                         let raw = sess.view.raw_lines();
-                        let lines: Vec<Vec<char>> = raw.iter().map(|l| l.chars().collect()).collect();
+                        let lines: Vec<Vec<char>> =
+                            raw.iter().map(|l| l.chars().collect()).collect();
                         sess.search.update(&lines);
                     }
                 }
@@ -1763,7 +1999,8 @@ impl App {
                     if let Some(sess) = self.sessions.get_mut(idx) {
                         sess.search.query.push(c);
                         let raw = sess.view.raw_lines();
-                        let lines: Vec<Vec<char>> = raw.iter().map(|l| l.chars().collect()).collect();
+                        let lines: Vec<Vec<char>> =
+                            raw.iter().map(|l| l.chars().collect()).collect();
                         sess.search.update(&lines);
                     }
                 }
@@ -1787,25 +2024,33 @@ impl App {
             ("Toggle mouse".into(), "alt+m".into()),
             ("Quit".into(), "q".into()),
         ];
-        
+
         if matches!(self.update_status, UpdateStatus::Available) && !self.update_dismissed {
             items.push(("Update".into(), "update".into()));
         }
-        
+
         for m in &self.settings.macros {
             let label = format!("Run: {}", m.name);
             items.push((label, format!("macro:{}", m.name)));
-            
         }
         items
     }
 
-    fn handle_palette_key(&mut self, k: KeyEvent, cmd_tx: &mpsc::UnboundedSender<Cmd>, settings: &Arc<Settings>) {
+    fn handle_palette_key(
+        &mut self,
+        k: KeyEvent,
+        cmd_tx: &mpsc::UnboundedSender<Cmd>,
+        settings: &Arc<Settings>,
+    ) {
         let items = self.palette_items();
-        let filtered: Vec<(usize, &(String, String))> = items.iter().enumerate()
+        let filtered: Vec<(usize, &(String, String))> = items
+            .iter()
+            .enumerate()
             .filter(|(_, (label, _))| {
                 self.palette_filter.is_empty()
-                    || label.to_lowercase().contains(&self.palette_filter.to_lowercase())
+                    || label
+                        .to_lowercase()
+                        .contains(&self.palette_filter.to_lowercase())
             })
             .collect();
 
@@ -1814,10 +2059,12 @@ impl App {
                 self.focus = Focus::Hosts;
             }
             KeyCode::Enter => {
-                if filtered.is_empty() { return; }
+                if filtered.is_empty() {
+                    return;
+                }
                 let (_, (_, key)) = &filtered[self.palette_selected.min(filtered.len() - 1)];
                 self.focus = Focus::Hosts;
-                
+
                 if let Some(macro_name) = key.strip_prefix("macro:") {
                     if let Some(m) = self.settings.macros.iter().find(|m| m.name == macro_name) {
                         if let Some(idx) = self.active_session {
@@ -1829,13 +2076,16 @@ impl App {
                                         let _ = tx.send(SessionCmd::Send(bytes));
                                     }
                                 }
-                                self.push_toast(format!("macro: {} ({} cmds)", m.name, m.commands.len()), MsgLevel::Info);
+                                self.push_toast(
+                                    format!("macro: {} ({} cmds)", m.name, m.commands.len()),
+                                    MsgLevel::Info,
+                                );
                             }
                         }
                     }
                     return;
                 }
-                
+
                 let mapped = match key.as_str() {
                     "n" => KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE),
                     "e" => KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE),
@@ -1884,14 +2134,31 @@ impl App {
         };
         match k.code {
             KeyCode::Esc => {
-                let is_rename = matches!(&self.mode,
-                    AppMode::Prompt { kind: PromptKind::RenameSession { .. }, .. }
+                let is_rename = matches!(
+                    &self.mode,
+                    AppMode::Prompt {
+                        kind: PromptKind::RenameSession { .. },
+                        ..
+                    }
                 );
-                let is_settings = matches!(&self.mode,
-                    AppMode::Prompt { kind: PromptKind::KeybindingEdit { .. } | PromptKind::KeybindingNew | PromptKind::MacroName { .. } | PromptKind::MacroCmds { .. }, .. }
+                let is_settings = matches!(
+                    &self.mode,
+                    AppMode::Prompt {
+                        kind: PromptKind::KeybindingEdit { .. }
+                            | PromptKind::KeybindingNew
+                            | PromptKind::MacroName { .. }
+                            | PromptKind::MacroCmds { .. },
+                        ..
+                    }
                 );
-                if matches!(&self.mode,
-                    AppMode::Prompt { kind: PromptKind::SftpMkdir { .. } | PromptKind::SftpRename { .. } | PromptKind::SftpFilter { .. }, .. }
+                if matches!(
+                    &self.mode,
+                    AppMode::Prompt {
+                        kind: PromptKind::SftpMkdir { .. }
+                            | PromptKind::SftpRename { .. }
+                            | PromptKind::SftpFilter { .. },
+                        ..
+                    }
                 ) {
                     self.mode = AppMode::Browsing;
                     return;
@@ -1901,9 +2168,13 @@ impl App {
                 self.pending_dial = None;
                 self.pending_host_opts = None;
                 self.pending_macro_name = None;
-                self.focus = if is_rename { Focus::Terminal }
-                    else if is_settings { Focus::Settings }
-                    else { Focus::Hosts };
+                self.focus = if is_rename {
+                    Focus::Terminal
+                } else if is_settings {
+                    Focus::Settings
+                } else {
+                    Focus::Hosts
+                };
             }
             KeyCode::Enter => {
                 let value = buf.clone();
@@ -1916,19 +2187,31 @@ impl App {
             }
             KeyCode::Backspace => {
                 if *cur > 0 {
-                    let prev = buf[..*cur].char_indices().last().map(|(i, _)| i).unwrap_or(0);
+                    let prev = buf[..*cur]
+                        .char_indices()
+                        .last()
+                        .map(|(i, _)| i)
+                        .unwrap_or(0);
                     buf.remove(prev);
                     *cur = prev;
                 }
             }
             KeyCode::Left => {
                 if *cur > 0 {
-                    *cur = buf[..*cur].char_indices().last().map(|(i, _)| i).unwrap_or(0);
+                    *cur = buf[..*cur]
+                        .char_indices()
+                        .last()
+                        .map(|(i, _)| i)
+                        .unwrap_or(0);
                 }
             }
             KeyCode::Right => {
                 if *cur < buf.len() {
-                    *cur = buf[*cur..].char_indices().nth(1).map(|(i, _)| *cur + i).unwrap_or(buf.len());
+                    *cur = buf[*cur..]
+                        .char_indices()
+                        .nth(1)
+                        .map(|(i, _)| *cur + i)
+                        .unwrap_or(buf.len());
                 }
             }
             KeyCode::Char(c) => {
@@ -1961,7 +2244,7 @@ impl App {
                     self.host_state.select(Some(self.hosts.len() - 1));
                     self.save_config(settings);
                     self.status_msg = Some("host added".into());
-                    
+
                     if let Some(h) = self.selected_host().cloned() {
                         self.mode = AppMode::Prompt {
                             kind: PromptKind::EditField {
@@ -1986,7 +2269,6 @@ impl App {
                 self.mode = AppMode::Browsing;
             }
             PromptKind::MasterPassword => {
-                
                 let master_pwd = value;
                 if vault_exists() {
                     match vault_load(&master_pwd) {
@@ -1997,7 +2279,7 @@ impl App {
                         }
                         Err(e) => {
                             self.status_msg = Some(format!("vault load error: {}", e));
-                            
+
                             self.mode = AppMode::Prompt {
                                 kind: PromptKind::MasterPassword,
                                 buffer: String::new(),
@@ -2034,7 +2316,7 @@ impl App {
                         self.mode = AppMode::Browsing;
                         return;
                     }
-                    
+
                     if let Some(vault) = self.master_vault.as_mut() {
                         let id = host_id(&opts.host, &opts.user);
                         let mut secret = vault.get(&id).cloned().unwrap_or_default();
@@ -2091,14 +2373,21 @@ impl App {
             }
             PromptKind::Passphrase { path } => {
                 if let Some((host_name, mut opts)) = self.pending_host_opts.take() {
-                    opts.auth = opts.auth.clone().into_iter().map(|a| {
-                        match a {
-                            AuthChoice::KeyFile { path: p, passphrase: _ } if p == path => {
-                                AuthChoice::KeyFile { path: p, passphrase: Some(value.clone()) }
-                            }
+                    opts.auth = opts
+                        .auth
+                        .clone()
+                        .into_iter()
+                        .map(|a| match a {
+                            AuthChoice::KeyFile {
+                                path: p,
+                                passphrase: _,
+                            } if p == path => AuthChoice::KeyFile {
+                                path: p,
+                                passphrase: Some(value.clone()),
+                            },
                             other => other,
-                        }
-                    }).collect();
+                        })
+                        .collect();
                     if let Some(vault) = self.master_vault.as_mut() {
                         let id = host_id(&opts.host, &opts.user);
                         let mut secret = vault.get(&id).cloned().unwrap_or_default();
@@ -2159,7 +2448,11 @@ impl App {
                         if sid == session_id {
                             if let Some(idx) = self.session_index(sid) {
                                 if let Some(s) = self.sessions[idx].sftp_state.as_ref() {
-                                    let path = format!("{}/{}", s.remote_path.trim_end_matches('/'), value);
+                                    let path = format!(
+                                        "{}/{}",
+                                        s.remote_path.trim_end_matches('/'),
+                                        value
+                                    );
                                     let remote_path = s.remote_path.clone();
                                     let handle = self.sessions[idx].handle.clone().unwrap();
                                     let (tx, rx) = mpsc::unbounded_channel::<Vec<SftpEntry>>();
@@ -2167,9 +2460,15 @@ impl App {
                                         if let Ok(fs) = open_remote(&handle).await {
                                             let _ = fs.mkdir(&path).await;
                                             if let Ok(list) = fs.list(&remote_path).await {
-                                                let _ = tx.send(list.into_iter().map(|e| SftpEntry {
-                                                    name: e.name, is_dir: e.is_dir, size: e.size,
-                                                }).collect());
+                                                let _ = tx.send(
+                                                    list.into_iter()
+                                                        .map(|e| SftpEntry {
+                                                            name: e.name,
+                                                            is_dir: e.is_dir,
+                                                            size: e.size,
+                                                        })
+                                                        .collect(),
+                                                );
                                             }
                                         }
                                     });
@@ -2189,11 +2488,20 @@ impl App {
                             if let Some(idx) = self.session_index(sid) {
                                 let (old, new, remote_path, entry_name) = {
                                     let s = self.sessions[idx].sftp_state.as_ref().unwrap();
-                                    let entry_name = s.current_entries().get(s.sel).map(|e| e.name.clone());
+                                    let entry_name =
+                                        s.current_entries().get(s.sel).map(|e| e.name.clone());
                                     match entry_name {
                                         Some(ref name) => {
-                                            let old = format!("{}/{}", s.remote_path.trim_end_matches('/'), name);
-                                            let new = format!("{}/{}", s.remote_path.trim_end_matches('/'), value);
+                                            let old = format!(
+                                                "{}/{}",
+                                                s.remote_path.trim_end_matches('/'),
+                                                name
+                                            );
+                                            let new = format!(
+                                                "{}/{}",
+                                                s.remote_path.trim_end_matches('/'),
+                                                value
+                                            );
                                             (old, new, s.remote_path.clone(), name.clone())
                                         }
                                         None => return self.restore_sftp_or_browse(),
@@ -2205,14 +2513,21 @@ impl App {
                                     if let Ok(fs) = open_remote(&handle).await {
                                         let _ = fs.rename(&old, &new).await;
                                         if let Ok(list) = fs.list(&remote_path).await {
-                                            let _ = tx.send(list.into_iter().map(|e| SftpEntry {
-                                                name: e.name, is_dir: e.is_dir, size: e.size,
-                                            }).collect());
+                                            let _ = tx.send(
+                                                list.into_iter()
+                                                    .map(|e| SftpEntry {
+                                                        name: e.name,
+                                                        is_dir: e.is_dir,
+                                                        size: e.size,
+                                                    })
+                                                    .collect(),
+                                            );
                                         }
                                     }
                                 });
                                 self.sessions[idx].sftp_rx = Some(rx);
-                                self.status_msg = Some(format!("rename: {} -> {}", entry_name, value));
+                                self.status_msg =
+                                    Some(format!("rename: {} -> {}", entry_name, value));
                             }
                         }
                     }
@@ -2267,7 +2582,6 @@ impl App {
             }
             PromptKind::MacroName { current: _ } => {
                 if value.is_empty() {
-                    
                     if let Some(target) = self.edit_target.take() {
                         if let Some(idx_str) = target.strip_prefix("macro_") {
                             if let Ok(idx) = idx_str.parse::<usize>() {
@@ -2284,10 +2598,10 @@ impl App {
                     self.mode = AppMode::Browsing;
                     self.focus = Focus::Settings;
                 } else {
-                    
                     let target = self.edit_target.take();
                     let idx_opt = target.and_then(|t| {
-                        t.strip_prefix("macro_").and_then(|s| s.parse::<usize>().ok())
+                        t.strip_prefix("macro_")
+                            .and_then(|s| s.parse::<usize>().ok())
                     });
                     self.pending_macro_name = Some((value.clone(), idx_opt));
                     let cmds = idx_opt
@@ -2295,16 +2609,30 @@ impl App {
                         .map(|m| m.commands.join("; "))
                         .unwrap_or_default();
                     self.mode = AppMode::Prompt {
-                        kind: PromptKind::MacroCmds { name: value, current_cmds: cmds.clone() },
+                        kind: PromptKind::MacroCmds {
+                            name: value,
+                            current_cmds: cmds.clone(),
+                        },
                         buffer: cmds.clone(),
                         cursor: cmds.len(),
                     };
                 }
             }
-            PromptKind::MacroCmds { name, current_cmds: _ } => {
+            PromptKind::MacroCmds {
+                name,
+                current_cmds: _,
+            } => {
                 if let Some((_name, idx_opt)) = self.pending_macro_name.take() {
-                    let cmds: Vec<String> = value.split(';').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-                    let m = betterssh_core::Macro { name, commands: cmds, key: None };
+                    let cmds: Vec<String> = value
+                        .split(';')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    let m = betterssh_core::Macro {
+                        name,
+                        commands: cmds,
+                        key: None,
+                    };
                     if let Some(idx) = idx_opt {
                         if idx < self.settings.macros.len() {
                             self.settings.macros[idx] = m;
@@ -2334,11 +2662,13 @@ impl App {
     }
 
     fn collect_metrics(&mut self) {
-        
         if let Ok(stat) = std::fs::read_to_string("/proc/stat") {
             if let Some(line) = stat.lines().next() {
-                let parts: Vec<u64> = line.split_whitespace().skip(1)
-                    .filter_map(|s| s.parse().ok()).collect();
+                let parts: Vec<u64> = line
+                    .split_whitespace()
+                    .skip(1)
+                    .filter_map(|s| s.parse().ok())
+                    .collect();
                 if parts.len() >= 4 {
                     let work: u64 = parts[0..3].iter().sum();
                     let idle = parts[3];
@@ -2346,7 +2676,8 @@ impl App {
                     let prev_total = self.prev_cpu_work + self.prev_cpu_idle;
                     if total > prev_total {
                         let delta = total - prev_total;
-                        self.metrics.cpu_pct = ((work - self.prev_cpu_work) as f32 / delta as f32) * 100.0;
+                        self.metrics.cpu_pct =
+                            ((work - self.prev_cpu_work) as f32 / delta as f32) * 100.0;
                         self.prev_cpu_work = work;
                         self.prev_cpu_idle = idle;
                     }
@@ -2354,22 +2685,28 @@ impl App {
             }
         }
 
-        
         if let Ok(mem) = std::fs::read_to_string("/proc/meminfo") {
             let mut total_kb: u64 = 0;
             let mut avail_kb: u64 = 0;
             for line in mem.lines() {
                 if line.starts_with("MemTotal:") {
-                    total_kb = line.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+                    total_kb = line
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0);
                 } else if line.starts_with("MemAvailable:") {
-                    avail_kb = line.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+                    avail_kb = line
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0);
                 }
             }
             self.metrics.ram_total_mb = total_kb / 1024;
             self.metrics.ram_used_mb = (total_kb.saturating_sub(avail_kb)) / 1024;
         }
 
-        
         if let Ok(la) = std::fs::read_to_string("/proc/loadavg") {
             let parts: Vec<&str> = la.split_whitespace().collect();
             if parts.len() >= 3 {
@@ -2379,21 +2716,17 @@ impl App {
             }
         }
 
-        
         if let Ok(ut) = std::fs::read_to_string("/proc/uptime") {
             if let Some(first) = ut.split_whitespace().next() {
                 self.metrics.uptime_secs = first.parse::<f64>().unwrap_or(0.0) as u64;
             }
         }
 
-        
         {
             let stat = std::fs::metadata("/");
-            if let Ok(_st) = stat {
-                
-            }
+            if let Ok(_st) = stat {}
         }
-        
+
         if let Ok(df) = std::process::Command::new("df").args(["-B1", "/"]).output() {
             if let Some(line) = String::from_utf8_lossy(&df.stdout).lines().nth(1) {
                 let parts: Vec<&str> = line.split_whitespace().collect();
@@ -2406,14 +2739,16 @@ impl App {
             }
         }
 
-        
         if let Ok(nd) = std::fs::read_to_string("/proc/net/dev") {
             let mut rx_total: u64 = 0;
             let mut tx_total: u64 = 0;
             for line in nd.lines().skip(2) {
                 if let Some((_iface, rest)) = line.split_once(':') {
-                    let nums: Vec<u64> = rest.split_whitespace()
-                        .take(10).filter_map(|s| s.parse().ok()).collect();
+                    let nums: Vec<u64> = rest
+                        .split_whitespace()
+                        .take(10)
+                        .filter_map(|s| s.parse().ok())
+                        .collect();
                     if nums.len() >= 10 {
                         rx_total += nums[0];
                         tx_total += nums[8];
@@ -2423,8 +2758,10 @@ impl App {
             let now = std::time::Instant::now();
             let elapsed = now.duration_since(self.prev_net_time).as_secs_f32();
             if elapsed > 0.5 && self.prev_net_time != std::time::Instant::now() {
-                self.metrics.net_down_kbs = (rx_total.saturating_sub(self.prev_net_rx)) as f32 / elapsed / 1024.0;
-                self.metrics.net_up_kbs = (tx_total.saturating_sub(self.prev_net_tx)) as f32 / elapsed / 1024.0;
+                self.metrics.net_down_kbs =
+                    (rx_total.saturating_sub(self.prev_net_rx)) as f32 / elapsed / 1024.0;
+                self.metrics.net_up_kbs =
+                    (tx_total.saturating_sub(self.prev_net_tx)) as f32 / elapsed / 1024.0;
                 self.prev_net_rx = rx_total;
                 self.prev_net_tx = tx_total;
                 self.prev_net_time = now;
@@ -2436,10 +2773,11 @@ impl App {
             }
         }
 
-        self.metrics.cpu_cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+        self.metrics.cpu_cores = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1);
         self.check_hosts_alive();
 
-        
         if let Some(rx) = self.remote_metrics_rx.as_mut() {
             match rx.try_recv() {
                 Ok(Some(metrics)) => {
@@ -2453,7 +2791,6 @@ impl App {
             }
         }
 
-        
         if self.remote_metrics_rx.is_none() {
             if let Some(idx) = self.active_session {
                 if let Some(s) = self.sessions.get(idx) {
@@ -2474,7 +2811,6 @@ impl App {
     }
 
     fn check_hosts_alive(&mut self) {
-        
         let mut i = 0;
         while i < self.pending_host_checks.len() {
             let (name, rx) = &self.pending_host_checks[i];
@@ -2496,7 +2832,6 @@ impl App {
             }
         }
 
-        
         if self.last_host_check.elapsed() <= std::time::Duration::from_secs(30) {
             return;
         }
@@ -2506,21 +2841,23 @@ impl App {
             if self.host_status.get(&name) == Some(&HostStatus::Alive) {
                 continue;
             }
-            
+
             if self.pending_host_checks.iter().any(|(n, _)| n == &name) {
                 continue;
             }
             let addr_str = format!("{}:{}", h.host, h.port);
             let (tx, rx) = std::sync::mpsc::channel();
             self.pending_host_checks.push((name.clone(), rx));
-            std::thread::spawn(move || {
-                match std::net::ToSocketAddrs::to_socket_addrs(&addr_str) {
+            std::thread::spawn(
+                move || match std::net::ToSocketAddrs::to_socket_addrs(&addr_str) {
                     Ok(addrs) => {
                         for addr in addrs {
                             if std::net::TcpStream::connect_timeout(
                                 &addr,
                                 std::time::Duration::from_secs(2),
-                            ).is_ok() {
+                            )
+                            .is_ok()
+                            {
                                 let _ = tx.send(Ok::<(), String>(()));
                                 return;
                             }
@@ -2530,13 +2867,12 @@ impl App {
                     Err(e) => {
                         let _ = tx.send(Err(format!("{}", e)));
                     }
-                }
-            });
+                },
+            );
         }
     }
 
     fn on_tick(&mut self) {
-        
         self.update_status = if update::is_downloading() {
             UpdateStatus::Downloading
         } else if update::is_done() {
@@ -2554,7 +2890,6 @@ impl App {
             self.update_latest_version = v.to_string();
         }
 
-        
         if let Some((cols, rows)) = self.pending_resize.take() {
             for s in &mut self.sessions {
                 s.view.resize(cols.max(20), rows.max(5));
@@ -2572,8 +2907,6 @@ impl App {
 
         let mut new_toasts: Vec<(String, MsgLevel)> = Vec::new();
 
-        
-        
         for s in self.sessions.iter_mut() {
             while let Ok(evt) = s.events.try_recv() {
                 match evt {
@@ -2582,7 +2915,10 @@ impl App {
                         let already = matches!(s.status, SessionStatus::Disconnected(_));
                         if !already {
                             s.status = SessionStatus::Disconnected(reason.clone());
-                            new_toasts.push((format!("{} disconnected: {}", s.host_name, reason), MsgLevel::Warn));
+                            new_toasts.push((
+                                format!("{} disconnected: {}", s.host_name, reason),
+                                MsgLevel::Warn,
+                            ));
                             cleanup_forwards(s);
                         }
                     }
@@ -2594,12 +2930,13 @@ impl App {
                     SshEvent::Error(e) => {
                         new_toasts.push((format!("{} err: {}", s.host_name, e), MsgLevel::Bad));
                     }
-                    SshEvent::Log(line) => { new_toasts.push((line, MsgLevel::Info)); }
+                    SshEvent::Log(line) => {
+                        new_toasts.push((line, MsgLevel::Info));
+                    }
                     SshEvent::Connected => {}
                 }
             }
 
-            
             if let Some(rx) = s.sftp_rx.as_mut() {
                 if let Ok(entries) = rx.try_recv() {
                     if let Some(sftp) = s.sftp_state.as_mut() {
@@ -2618,7 +2955,6 @@ impl App {
                 }
             }
 
-            
             if let Some(sid) = self.sftp_session_id {
                 if s.id == sid {
                     if let Some(sftp) = s.sftp_state.as_mut() {
@@ -2647,25 +2983,42 @@ impl App {
                 opts.term_cols = real_cols.saturating_sub(2).max(20);
                 opts.term_rows = real_rows.saturating_sub(3).max(5);
 
-                
                 if host.identity.iter().any(|i| matches!(i, Identity::Agent)) {
                     self.push_toast("agent: loading keys from SSH_AUTH_SOCK", MsgLevel::Info);
                 }
 
-                
-                let needs_pp = opts.auth.iter().any(|a| matches!(a, AuthChoice::KeyFile { passphrase: None, .. }));
+                let needs_pp = opts.auth.iter().any(|a| {
+                    matches!(
+                        a,
+                        AuthChoice::KeyFile {
+                            passphrase: None,
+                            ..
+                        }
+                    )
+                });
                 let stored_pp = if needs_pp {
                     self.master_vault.as_ref().and_then(|v| {
                         let id = host_id(&host.host, &host.user);
                         v.get(&id).and_then(|s| {
                             opts.auth.iter().find_map(|a| {
-                                if let AuthChoice::KeyFile { path, passphrase: None } = a {
-                                    s.key_passphrase.get(path).filter(|p| !p.is_empty()).cloned()
-                                } else { None }
+                                if let AuthChoice::KeyFile {
+                                    path,
+                                    passphrase: None,
+                                } = a
+                                {
+                                    s.key_passphrase
+                                        .get(path)
+                                        .filter(|p| !p.is_empty())
+                                        .cloned()
+                                } else {
+                                    None
+                                }
                             })
                         })
                     })
-                } else { None };
+                } else {
+                    None
+                };
                 if let Some(ref pp) = stored_pp {
                     opts.auth.iter_mut().for_each(|a| {
                         if let AuthChoice::KeyFile { passphrase, .. } = a {
@@ -2676,7 +3029,6 @@ impl App {
                     });
                 }
 
-                
                 if let Some(jump_name) = &host.jump {
                     if let Some(jump_host) = self.hosts.iter().find(|h| h.name == *jump_name) {
                         let jump_opts = build_opts(jump_host);
@@ -2693,29 +3045,44 @@ impl App {
                             use_agent: jump_opts.use_agent,
                         });
                     } else {
-                        self.push_toast(format!("jump host '{}' not found", jump_name), MsgLevel::Bad);
+                        self.push_toast(
+                            format!("jump host '{}' not found", jump_name),
+                            MsgLevel::Bad,
+                        );
                         return;
                     }
                 }
 
-                let needs_password = host.identity.iter().any(|i| matches!(i, Identity::Password { .. }));
+                let needs_password = host
+                    .identity
+                    .iter()
+                    .any(|i| matches!(i, Identity::Password { .. }));
                 let stored_password = if needs_password {
                     self.master_vault.as_ref().and_then(|v| {
                         let id = host_id(&host.host, &host.user);
                         v.get(&id).and_then(|s| {
-                            if s.password.is_empty() { None } else { Some(s.password.clone()) }
+                            if s.password.is_empty() {
+                                None
+                            } else {
+                                Some(s.password.clone())
+                            }
                         })
                     })
                 } else {
                     None
                 };
 
-                
                 if needs_pp && stored_pp.is_none() {
                     if let Some(path) = opts.auth.iter().find_map(|a| {
-                        if let AuthChoice::KeyFile { path, passphrase: None } = a {
+                        if let AuthChoice::KeyFile {
+                            path,
+                            passphrase: None,
+                        } = a
+                        {
                             Some(path.clone())
-                        } else { None }
+                        } else {
+                            None
+                        }
                     }) {
                         self.mode = AppMode::Prompt {
                             kind: PromptKind::Passphrase { path },
@@ -2729,7 +3096,9 @@ impl App {
 
                 if needs_password && stored_password.is_none() {
                     self.mode = AppMode::Prompt {
-                        kind: PromptKind::Password { host: format!("{}@{}:{}", host.user, host.host, host.port) },
+                        kind: PromptKind::Password {
+                            host: format!("{}@{}:{}", host.user, host.host, host.port),
+                        },
                         buffer: String::new(),
                         cursor: 0,
                     };
@@ -2784,9 +3153,11 @@ impl App {
                 return;
             }
         };
-        
+
         let host_name = self.sessions[idx].host_name.clone();
-        let fw = match self.hosts.iter()
+        let fw = match self
+            .hosts
+            .iter()
             .find(|h| h.name == host_name)
             .and_then(|h| h.forwarding.iter().find(|f| f.id == fw_id))
         {
@@ -2796,10 +3167,18 @@ impl App {
                 return;
             }
         };
-        let rf = self.sessions[idx].remote_forwards.clone().unwrap_or_else(|| {
-            Arc::new(AsyncMutex::new(HashMap::new()))
-        });
-        match betterssh_ssh::port_forward::start_forward(&handle, &rf, &fw, mpsc::unbounded_channel().0).await {
+        let rf = self.sessions[idx]
+            .remote_forwards
+            .clone()
+            .unwrap_or_else(|| Arc::new(AsyncMutex::new(HashMap::new())));
+        match betterssh_ssh::port_forward::start_forward(
+            &handle,
+            &rf,
+            &fw,
+            mpsc::unbounded_channel().0,
+        )
+        .await
+        {
             Ok(()) => {
                 if let Some(s) = self.sessions.get_mut(idx) {
                     s.forwards.push(ActiveForward {
@@ -2833,11 +3212,15 @@ impl App {
             Some(i) => i,
             None => return,
         };
-        
+
         if let Some(s) = self.sessions.get_mut(idx) {
             s.forwards.retain(|f| f.id != fw_id);
         }
-        let host_name = self.sessions.get(idx).map(|s| s.host_name.clone()).unwrap_or_default();
+        let host_name = self
+            .sessions
+            .get(idx)
+            .map(|s| s.host_name.clone())
+            .unwrap_or_default();
         if let Some(h) = self.hosts.iter_mut().find(|h| h.name == host_name) {
             if let Some(f) = h.forwarding.iter_mut().find(|f| f.id == fw_id) {
                 f.active = false;
@@ -2853,7 +3236,13 @@ impl App {
 
         let session_id = self.alloc_session_id();
         let label = format!("{}@{}:{}", opts.user, opts.host, opts.port);
-        let mut sess = Session::new(session_id, host_name.clone(), label, opts.term_cols, opts.term_rows);
+        let mut sess = Session::new(
+            session_id,
+            host_name.clone(),
+            label,
+            opts.term_cols,
+            opts.term_rows,
+        );
         sess.status = SessionStatus::Connecting;
         let idx = self.sessions.len();
         self.sessions.push(sess);
@@ -2865,13 +3254,16 @@ impl App {
         let opts_clone = opts.clone();
         let host_name_clone = host_name.clone();
 
-        
         let has_vault_pw = self.master_vault.as_ref().is_some_and(|v| {
             let id = host_id(&opts.host, &opts.user);
             v.get(&id).is_some_and(|s| !s.password.is_empty())
         });
-        let needs_password = has_vault_pw || self.last_entered_password.is_some()
-            || opts.auth.iter().any(|a| matches!(a, AuthChoice::Password(_)));
+        let needs_password = has_vault_pw
+            || self.last_entered_password.is_some()
+            || opts
+                .auth
+                .iter()
+                .any(|a| matches!(a, AuthChoice::Password(_)));
 
         if needs_password {
             let (pw_tx, mut pw_rx) = mpsc::unbounded_channel::<String>();
@@ -2881,7 +3273,6 @@ impl App {
                 session_id,
             });
 
-            
             if let Some(vault) = self.master_vault.as_ref() {
                 let host_id_str = host_id(&opts.host, &opts.user);
                 if let Some(secret) = vault.get(&host_id_str) {
@@ -2898,11 +3289,18 @@ impl App {
                 if let Some(pw) = pw_rx.recv().await {
                     tracing::debug!("spawn: got password, connecting");
                     let ask_password = move || Some(pw.clone());
-                    match betterssh_ssh::client::connect_with_password(&opts_clone, ask_password).await {
+                    match betterssh_ssh::client::connect_with_password(&opts_clone, ask_password)
+                        .await
+                    {
                         Ok((handle, _events, rf)) => {
                             tracing::debug!("connect OK");
                             let shared = Arc::new(AsyncMutex::new(handle));
-                            let _ = dial_tx.send(DialResult::Done(shared, rf, host_name_clone, opts_clone));
+                            let _ = dial_tx.send(DialResult::Done(
+                                shared,
+                                rf,
+                                host_name_clone,
+                                opts_clone,
+                            ));
                         }
                         Err(e) => {
                             tracing::debug!(%e, "connect FAILED");
@@ -2915,13 +3313,13 @@ impl App {
                 }
             });
         } else {
-            
             tokio::spawn(async move {
                 match betterssh_ssh::client::connect(&opts_clone).await {
                     Ok((handle, _events, rf)) => {
                         tracing::debug!("connect OK (key auth)");
                         let shared = Arc::new(AsyncMutex::new(handle));
-                        let _ = dial_tx.send(DialResult::Done(shared, rf, host_name_clone, opts_clone));
+                        let _ =
+                            dial_tx.send(DialResult::Done(shared, rf, host_name_clone, opts_clone));
                     }
                     Err(e) => {
                         tracing::debug!(%e, "connect FAILED");
@@ -2941,7 +3339,6 @@ impl App {
             return;
         }
         if self.sessions[idx].sftp_state.is_some() {
-            
             self.sftp_session_id = Some(self.sessions[idx].id);
             self.mode = AppMode::Sftp;
             self.focus = Focus::Sftp;
@@ -2958,11 +3355,14 @@ impl App {
         tokio::spawn(async move {
             let entries = match open_remote(&handle).await {
                 Ok(fs) => match fs.list("/").await {
-                    Ok(list) => list.into_iter().map(|e| SftpEntry {
-                        name: e.name,
-                        is_dir: e.is_dir,
-                        size: e.size,
-                    }).collect(),
+                    Ok(list) => list
+                        .into_iter()
+                        .map(|e| SftpEntry {
+                            name: e.name,
+                            is_dir: e.is_dir,
+                            size: e.size,
+                        })
+                        .collect(),
                     Err(_) => vec![],
                 },
                 Err(_) => vec![],
@@ -2987,7 +3387,9 @@ impl App {
             Some(i) => i,
             None => return,
         };
-        let entries = self.sessions[idx].sftp_state.as_ref()
+        let entries = self.sessions[idx]
+            .sftp_state
+            .as_ref()
             .map(|s| s.current_entries().to_vec())
             .unwrap_or_default();
         let (sel, focus, local_path, remote_path) = {
@@ -3008,20 +3410,27 @@ impl App {
                 let (tx, rx) = mpsc::unbounded_channel::<Result<(), String>>();
                 tokio::spawn(async move {
                     let result = async {
-                        let data = tokio::fs::read(&local).await
+                        let data = tokio::fs::read(&local)
+                            .await
                             .map_err(|e| format!("read local: {}", e))?;
                         let h = h.ok_or("not connected")?;
                         let handle = h.lock().await;
-                        let fs = RemoteFs::open(&handle).await
+                        let fs = RemoteFs::open(&handle)
+                            .await
                             .map_err(|e| format!("sftp open: {}", e))?;
-                        fs.write_file(&remote, &data).await
+                        fs.write_file(&remote, &data)
+                            .await
                             .map_err(|e| format!("write remote: {}", e))?;
                         Ok(())
-                    }.await;
+                    }
+                    .await;
                     let _ = tx.send(result);
                 });
                 self.sessions[idx].sftp_result_rx = Some(rx);
-                self.push_toast(format!("{}: {} -> remote", label, local_display.display()), MsgLevel::Info);
+                self.push_toast(
+                    format!("{}: {} -> remote", label, local_display.display()),
+                    MsgLevel::Info,
+                );
             }
             SftpPane::Remote => {
                 let remote = format!("{}/{}", remote_path.trim_end_matches('/'), entry.name);
@@ -3032,23 +3441,32 @@ impl App {
                     let result = async {
                         let h = h.ok_or("not connected")?;
                         let handle = h.lock().await;
-                        let fs = RemoteFs::open(&handle).await
+                        let fs = RemoteFs::open(&handle)
+                            .await
                             .map_err(|e| format!("sftp open: {}", e))?;
-                        let data = fs.read_file(&remote).await
+                        let data = fs
+                            .read_file(&remote)
+                            .await
                             .map_err(|e| format!("read remote: {}", e))?;
                         drop(handle);
                         if let Some(parent) = local.parent() {
-                            tokio::fs::create_dir_all(parent).await
+                            tokio::fs::create_dir_all(parent)
+                                .await
                                 .map_err(|e| format!("mkdir: {}", e))?;
                         }
-                        tokio::fs::write(&local, &data).await
+                        tokio::fs::write(&local, &data)
+                            .await
                             .map_err(|e| format!("write local: {}", e))?;
                         Ok(())
-                    }.await;
+                    }
+                    .await;
                     let _ = tx.send(result);
                 });
                 self.sessions[idx].sftp_result_rx = Some(rx);
-                self.push_toast(format!("{}: {} -> local", label, remote_display), MsgLevel::Info);
+                self.push_toast(
+                    format!("{}: {} -> local", label, remote_display),
+                    MsgLevel::Info,
+                );
             }
         }
     }
@@ -3066,7 +3484,9 @@ impl App {
             Some(i) => i,
             None => return,
         };
-        let entries = self.sessions[idx].sftp_state.as_ref()
+        let entries = self.sessions[idx]
+            .sftp_state
+            .as_ref()
             .map(|s| s.current_entries().to_vec())
             .unwrap_or_default();
         let (sel, focus, local_path, remote_path) = {
@@ -3096,11 +3516,14 @@ impl App {
                     tokio::spawn(async move {
                         let entries = match open_remote(&handle).await {
                             Ok(fs) => match fs.list(&new_path).await {
-                                Ok(list) => list.into_iter().map(|e| SftpEntry {
-                                    name: e.name,
-                                    is_dir: e.is_dir,
-                                    size: e.size,
-                                }).collect(),
+                                Ok(list) => list
+                                    .into_iter()
+                                    .map(|e| SftpEntry {
+                                        name: e.name,
+                                        is_dir: e.is_dir,
+                                        size: e.size,
+                                    })
+                                    .collect(),
                                 Err(_) => vec![],
                             },
                             Err(_) => vec![],
@@ -3134,11 +3557,14 @@ impl App {
                 tokio::spawn(async move {
                     let entries = match open_remote(&handle).await {
                         Ok(fs) => match fs.list(&parent).await {
-                            Ok(list) => list.into_iter().map(|e| SftpEntry {
-                                name: e.name,
-                                is_dir: e.is_dir,
-                                size: e.size,
-                            }).collect(),
+                            Ok(list) => list
+                                .into_iter()
+                                .map(|e| SftpEntry {
+                                    name: e.name,
+                                    is_dir: e.is_dir,
+                                    size: e.size,
+                                })
+                                .collect(),
                             Err(_) => vec![],
                         },
                         Err(_) => vec![],
@@ -3155,7 +3581,9 @@ impl App {
             Some(i) => i,
             None => return,
         };
-        let entries = self.sessions[idx].sftp_state.as_ref()
+        let entries = self.sessions[idx]
+            .sftp_state
+            .as_ref()
             .map(|s| s.current_entries().to_vec())
             .unwrap_or_default();
         let (sel, focus, local_path, remote_path) = {
@@ -3171,7 +3599,10 @@ impl App {
             let path = format!("{}/{}", p.trim_end_matches('/'), entry.name);
             let handle = self.sessions[idx].handle.clone().unwrap();
             let path_clone = path.clone();
-            let remote_path = match focus { SftpPane::Remote => path.clone(), _ => String::new() };
+            let remote_path = match focus {
+                SftpPane::Remote => path.clone(),
+                _ => String::new(),
+            };
             let (tx, rx) = mpsc::unbounded_channel::<Result<(), String>>();
             let (list_tx, list_rx) = mpsc::unbounded_channel::<Vec<SftpEntry>>();
             tokio::spawn(async move {
@@ -3183,14 +3614,20 @@ impl App {
                     Err(e) => Err(format!("sftp open: {}", e)),
                 };
                 let _ = tx.send(result);
-                
+
                 if !remote_path.is_empty() {
                     if let Ok(fs) = open_remote(&handle).await {
                         let parent = parent_path_str(&remote_path).unwrap_or_else(|| "/".into());
                         if let Ok(list) = fs.list(&parent).await {
-                            let _ = list_tx.send(list.into_iter().map(|e| SftpEntry {
-                                name: e.name, is_dir: e.is_dir, size: e.size,
-                            }).collect());
+                            let _ = list_tx.send(
+                                list.into_iter()
+                                    .map(|e| SftpEntry {
+                                        name: e.name,
+                                        is_dir: e.is_dir,
+                                        size: e.size,
+                                    })
+                                    .collect(),
+                            );
                         }
                     }
                 }
@@ -3293,15 +3730,62 @@ async fn collect_remote_metrics(
     let mut in_net = false;
 
     for line in output.lines() {
-        if line == "---MEM---" { in_mem = true; in_disk = false; in_load = false; in_uptime = false; in_cpu = false; in_net = false; continue; }
-        if line == "---DISK---" { in_mem = false; in_disk = true; in_load = false; in_uptime = false; in_cpu = false; in_net = false; continue; }
-        if line == "---LOAD---" { in_mem = false; in_disk = false; in_load = true; in_uptime = false; in_cpu = false; in_net = false; continue; }
-        if line == "---UPTIME---" { in_mem = false; in_disk = false; in_load = false; in_uptime = true; in_cpu = false; in_net = false; continue; }
-        if line == "---CPU---" { in_mem = false; in_disk = false; in_load = false; in_uptime = false; in_cpu = true; in_net = false; continue; }
-        if line == "---NET---" { in_mem = false; in_disk = false; in_load = false; in_uptime = false; in_cpu = false; in_net = true; continue; }
+        if line == "---MEM---" {
+            in_mem = true;
+            in_disk = false;
+            in_load = false;
+            in_uptime = false;
+            in_cpu = false;
+            in_net = false;
+            continue;
+        }
+        if line == "---DISK---" {
+            in_mem = false;
+            in_disk = true;
+            in_load = false;
+            in_uptime = false;
+            in_cpu = false;
+            in_net = false;
+            continue;
+        }
+        if line == "---LOAD---" {
+            in_mem = false;
+            in_disk = false;
+            in_load = true;
+            in_uptime = false;
+            in_cpu = false;
+            in_net = false;
+            continue;
+        }
+        if line == "---UPTIME---" {
+            in_mem = false;
+            in_disk = false;
+            in_load = false;
+            in_uptime = true;
+            in_cpu = false;
+            in_net = false;
+            continue;
+        }
+        if line == "---CPU---" {
+            in_mem = false;
+            in_disk = false;
+            in_load = false;
+            in_uptime = false;
+            in_cpu = true;
+            in_net = false;
+            continue;
+        }
+        if line == "---NET---" {
+            in_mem = false;
+            in_disk = false;
+            in_load = false;
+            in_uptime = false;
+            in_cpu = false;
+            in_net = true;
+            continue;
+        }
 
         if in_mem {
-            
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 3 && parts[0] == "Mem:" {
                 if let Ok(total) = parts[1].parse::<u64>() {
@@ -3345,8 +3829,11 @@ async fn collect_remote_metrics(
         }
         if in_net {
             if let Some((_iface, rest)) = line.split_once(':') {
-                let nums: Vec<u64> = rest.split_whitespace()
-                    .take(10).filter_map(|s| s.parse().ok()).collect();
+                let nums: Vec<u64> = rest
+                    .split_whitespace()
+                    .take(10)
+                    .filter_map(|s| s.parse().ok())
+                    .collect();
                 if nums.len() >= 10 {
                     m.net_down_kbs += nums[0] as f32;
                     m.net_up_kbs += nums[8] as f32;
@@ -3355,7 +3842,6 @@ async fn collect_remote_metrics(
         }
     }
 
-    
     m.cpu_pct = 0.0;
 
     Some(m)
@@ -3419,13 +3905,15 @@ fn format_disk(total_gb: f32, used_gb: f32) -> String {
 
 fn prompt_label(kind: &PromptKind, _buf: &str) -> String {
     match kind {
-            PromptKind::Password { host } => format!("Password for {}", host),
-            PromptKind::MasterPassword => "Master password".into(),
+        PromptKind::Password { host } => format!("Password for {}", host),
+        PromptKind::MasterPassword => "Master password".into(),
         PromptKind::Passphrase { path } => format!("Passphrase for {}", path),
         PromptKind::NewHost => "New host (user@addr[:port])".into(),
         PromptKind::DeleteConfirm { host } => format!("Delete '{}'? (y/N)", host),
         PromptKind::JumpPassword { via, dest } => format!("Jump password ({} -> {})", via, dest),
-        PromptKind::EditField { field, host_name, .. } => {
+        PromptKind::EditField {
+            field, host_name, ..
+        } => {
             format!(
                 "{} of {} (Enter next, Esc cancel)",
                 field_label(field),
@@ -3436,7 +3924,9 @@ fn prompt_label(kind: &PromptKind, _buf: &str) -> String {
         PromptKind::SftpRename { session_id: _ } => "rename to".into(),
         PromptKind::SftpFilter { session_id: _ } => "filter".into(),
         PromptKind::RenameSession { .. } => "Rename session".into(),
-        PromptKind::KeybindingEdit { action, .. } => format!("Key combo for '{}' (empty=del)", action),
+        PromptKind::KeybindingEdit { action, .. } => {
+            format!("Key combo for '{}' (empty=del)", action)
+        }
         PromptKind::KeybindingNew => "New binding (action = key)".into(),
         PromptKind::MacroName { .. } => "Macro name".into(),
         PromptKind::MacroCmds { name, .. } => format!("Commands for '{}' (; sep)", name),
@@ -3478,8 +3968,15 @@ fn current_field_value(h: &Host, f: &EditField) -> String {
             .unwrap_or_default(),
         EditField::JumpHost => h.jump.clone().unwrap_or_default(),
         EditField::Password => {
-            let has = h.identity.iter().any(|i| matches!(i, Identity::Password { .. }));
-            if has { "y".into() } else { "n".into() }
+            let has = h
+                .identity
+                .iter()
+                .any(|i| matches!(i, Identity::Password { .. }));
+            if has {
+                "y".into()
+            } else {
+                "n".into()
+            }
         }
         EditField::Keepalive => h.keepalive.map(|k| k.to_string()).unwrap_or_default(),
         EditField::OnConnect => h.on_connect.join("; "),
@@ -3488,18 +3985,24 @@ fn current_field_value(h: &Host, f: &EditField) -> String {
 }
 
 fn format_forwards(fws: &[PortForward]) -> String {
-    fws.iter().map(|f| {
-        let dir = match f.direction {
-            ForwardDirection::Local => "L",
-            ForwardDirection::Remote => "R",
-            ForwardDirection::Dynamic => "D",
-        };
-        if f.direction == ForwardDirection::Dynamic {
-            format!("{}:{}:{}", dir, f.listen_addr, f.listen_port)
-        } else {
-            format!("{}:{}:{}:{}:{}", dir, f.listen_addr, f.listen_port, f.target_host, f.target_port)
-        }
-    }).collect::<Vec<_>>().join("|")
+    fws.iter()
+        .map(|f| {
+            let dir = match f.direction {
+                ForwardDirection::Local => "L",
+                ForwardDirection::Remote => "R",
+                ForwardDirection::Dynamic => "D",
+            };
+            if f.direction == ForwardDirection::Dynamic {
+                format!("{}:{}:{}", dir, f.listen_addr, f.listen_port)
+            } else {
+                format!(
+                    "{}:{}:{}:{}:{}",
+                    dir, f.listen_addr, f.listen_port, f.target_host, f.target_port
+                )
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("|")
 }
 
 fn apply_edit(h: &mut Host, field: &EditField, val: &str) {
@@ -3512,7 +4015,13 @@ fn apply_edit(h: &mut Host, field: &EditField, val: &str) {
             }
         }
         EditField::User => h.user = val.to_string(),
-        EditField::Group => h.group = if val.is_empty() { None } else { Some(val.to_string()) },
+        EditField::Group => {
+            h.group = if val.is_empty() {
+                None
+            } else {
+                Some(val.to_string())
+            }
+        }
         EditField::Tags => {
             h.tags = val
                 .split(',')
@@ -3521,7 +4030,8 @@ fn apply_edit(h: &mut Host, field: &EditField, val: &str) {
                 .collect();
         }
         EditField::KeyPath => {
-            h.identity.retain(|i| !matches!(i, Identity::Key { .. } | Identity::Agent));
+            h.identity
+                .retain(|i| !matches!(i, Identity::Key { .. } | Identity::Agent));
             if !val.is_empty() {
                 h.identity.insert(
                     0,
@@ -3532,9 +4042,16 @@ fn apply_edit(h: &mut Host, field: &EditField, val: &str) {
                 );
             }
         }
-        EditField::JumpHost => h.jump = if val.is_empty() { None } else { Some(val.to_string()) },
+        EditField::JumpHost => {
+            h.jump = if val.is_empty() {
+                None
+            } else {
+                Some(val.to_string())
+            }
+        }
         EditField::Password => {
-            h.identity.retain(|i| !matches!(i, Identity::Password { .. }));
+            h.identity
+                .retain(|i| !matches!(i, Identity::Password { .. }));
             if val.eq_ignore_ascii_case("y") || val.eq_ignore_ascii_case("yes") || !val.is_empty() {
                 h.identity.push(Identity::Password { from_agent: None });
             }
@@ -3543,7 +4060,11 @@ fn apply_edit(h: &mut Host, field: &EditField, val: &str) {
             h.keepalive = val.parse().ok();
         }
         EditField::OnConnect => {
-            h.on_connect = val.split(';').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+            h.on_connect = val
+                .split(';')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
         }
         EditField::Forwards => {
             h.forwarding = parse_forwards(val);
@@ -3643,7 +4164,14 @@ fn build_opts(h: &Host) -> ConnectOpts {
         .iter()
         .filter_map(|i| match i {
             Identity::Key { path, passphrase } => {
-                if path.is_empty() || path == "(none)" { None } else { Some(AuthChoice::KeyFile { path: path.clone(), passphrase: passphrase.clone() }) }
+                if path.is_empty() || path == "(none)" {
+                    None
+                } else {
+                    Some(AuthChoice::KeyFile {
+                        path: path.clone(),
+                        passphrase: passphrase.clone(),
+                    })
+                }
             }
             Identity::Password { .. } => None,
             Identity::Agent => None,
@@ -3652,7 +4180,11 @@ fn build_opts(h: &Host) -> ConnectOpts {
     ConnectOpts {
         host: h.host.clone(),
         port: h.port,
-        user: if h.user.is_empty() { "root".into() } else { h.user.clone() },
+        user: if h.user.is_empty() {
+            "root".into()
+        } else {
+            h.user.clone()
+        },
         auth,
         term_cols: 80,
         term_rows: 24,
@@ -3667,8 +4199,7 @@ fn cleanup_forwards(s: &mut Session) {
     if s.forwards.is_empty() && s.remote_forwards.is_none() {
         return;
     }
-    
-    
+
     if let Some(rf) = &s.remote_forwards {
         let mut map = match rf.try_lock() {
             Ok(m) => m,
@@ -3680,10 +4211,15 @@ fn cleanup_forwards(s: &mut Session) {
 }
 
 fn key_event_to_string(k: &KeyEvent) -> String {
-    let prefix = if k.modifiers.contains(KeyModifiers::CONTROL) { "ctrl+" }
-        else if k.modifiers.contains(KeyModifiers::ALT) { "alt+" }
-        else if k.modifiers.contains(KeyModifiers::SHIFT) { "shift+" }
-        else { "" };
+    let prefix = if k.modifiers.contains(KeyModifiers::CONTROL) {
+        "ctrl+"
+    } else if k.modifiers.contains(KeyModifiers::ALT) {
+        "alt+"
+    } else if k.modifiers.contains(KeyModifiers::SHIFT) {
+        "shift+"
+    } else {
+        ""
+    };
     match k.code {
         KeyCode::Char(c) => format!("{}{}", prefix, c),
         KeyCode::F(n) => format!("{}f{}", prefix, n),
@@ -3720,24 +4256,22 @@ fn key_to_bytes(k: KeyEvent) -> Vec<u8> {
         (KeyCode::Char(c), KeyModifiers::ALT) => {
             vec![0x1b, c as u8]
         }
-        (KeyCode::Char(c), _) => {
-            c.encode_utf8(&mut [0u8; 4]).as_bytes().to_vec()
-        }
+        (KeyCode::Char(c), _) => c.encode_utf8(&mut [0u8; 4]).as_bytes().to_vec(),
         (KeyCode::Enter, _) => b"\r".to_vec(),
         (KeyCode::Backspace, _) => b"\x7f".to_vec(),
         (KeyCode::Tab, _) => b"\t".to_vec(),
         (KeyCode::Esc, _) => b"\x1b".to_vec(),
-        
+
         (KeyCode::Up, KeyModifiers::NONE) => b"\x1bOA".to_vec(),
         (KeyCode::Down, KeyModifiers::NONE) => b"\x1bOB".to_vec(),
         (KeyCode::Right, KeyModifiers::NONE) => b"\x1bOC".to_vec(),
         (KeyCode::Left, KeyModifiers::NONE) => b"\x1bOD".to_vec(),
-        
+
         (KeyCode::Up, KeyModifiers::SHIFT) => b"\x1b[1;2A".to_vec(),
         (KeyCode::Down, KeyModifiers::SHIFT) => b"\x1b[1;2B".to_vec(),
         (KeyCode::Right, KeyModifiers::SHIFT) => b"\x1b[1;2C".to_vec(),
         (KeyCode::Left, KeyModifiers::SHIFT) => b"\x1b[1;2D".to_vec(),
-        
+
         (KeyCode::Up, KeyModifiers::CONTROL) => b"\x1b[1;5A".to_vec(),
         (KeyCode::Down, KeyModifiers::CONTROL) => b"\x1b[1;5B".to_vec(),
         (KeyCode::Right, KeyModifiers::CONTROL) => b"\x1b[1;5C".to_vec(),
@@ -3748,23 +4282,21 @@ fn key_to_bytes(k: KeyEvent) -> Vec<u8> {
         (KeyCode::Insert, _) => b"\x1b[2~".to_vec(),
         (KeyCode::PageUp, _) => b"\x1b[5~".to_vec(),
         (KeyCode::PageDown, _) => b"\x1b[6~".to_vec(),
-        
+
         (KeyCode::Up, _) => b"\x1bOA".to_vec(),
         (KeyCode::Down, _) => b"\x1bOB".to_vec(),
         (KeyCode::Right, _) => b"\x1bOC".to_vec(),
         (KeyCode::Left, _) => b"\x1bOD".to_vec(),
-        
+
         (KeyCode::BackTab, _) => b"\x1b[Z".to_vec(),
-        (KeyCode::F(n), _) => {
-            match n {
-                1 => b"\x1bOP".to_vec(),
-                2 => b"\x1bOQ".to_vec(),
-                3 => b"\x1bOR".to_vec(),
-                4 => b"\x1bOS".to_vec(),
-                5..=12 => format!("\x1b[{}~", n + 10).into_bytes(),
-                _ => vec![],
-            }
-        }
+        (KeyCode::F(n), _) => match n {
+            1 => b"\x1bOP".to_vec(),
+            2 => b"\x1bOQ".to_vec(),
+            3 => b"\x1bOR".to_vec(),
+            4 => b"\x1bOS".to_vec(),
+            5..=12 => format!("\x1b[{}~", n + 10).into_bytes(),
+            _ => vec![],
+        },
         _ => vec![],
     }
 }

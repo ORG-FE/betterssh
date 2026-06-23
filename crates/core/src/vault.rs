@@ -70,8 +70,7 @@ pub fn create(master_password: &str) -> Result<Vault> {
 
 pub fn load(master_password: &str) -> Result<Vault> {
     let path = vault_path()?;
-    let raw = std::fs::read(&path)
-        .with_context(|| format!("read vault {}", path.display()))?;
+    let raw = std::fs::read(&path).with_context(|| format!("read vault {}", path.display()))?;
     let v = decrypt(&raw, master_password)?;
     Ok(v)
 }
@@ -200,18 +199,24 @@ mod tests {
         let pass = "secret123";
 
         let mut vault = Vault::default();
-        vault.set("root@1.2.3.4", Secret {
-            password: "mypassword".into(),
-            key_passphrase: HashMap::new(),
-        });
-        vault.set("admin@5.6.7.8", Secret {
-            password: "adminpass".into(),
-            key_passphrase: {
-                let mut m = HashMap::new();
-                m.insert("id_rsa".into(), "keyphrase".into());
-                m
+        vault.set(
+            "root@1.2.3.4",
+            Secret {
+                password: "mypassword".into(),
+                key_passphrase: HashMap::new(),
             },
-        });
+        );
+        vault.set(
+            "admin@5.6.7.8",
+            Secret {
+                password: "adminpass".into(),
+                key_passphrase: {
+                    let mut m = HashMap::new();
+                    m.insert("id_rsa".into(), "keyphrase".into());
+                    m
+                },
+            },
+        );
 
         save_with_path(&vault, pass, &path).unwrap();
         let loaded = load_with_path(pass, &path).unwrap();
@@ -220,7 +225,12 @@ mod tests {
         assert_eq!(loaded.get("root@1.2.3.4").unwrap().password, "mypassword");
         assert_eq!(loaded.get("admin@5.6.7.8").unwrap().password, "adminpass");
         assert_eq!(
-            loaded.get("admin@5.6.7.8").unwrap().key_passphrase.get("id_rsa").unwrap(),
+            loaded
+                .get("admin@5.6.7.8")
+                .unwrap()
+                .key_passphrase
+                .get("id_rsa")
+                .unwrap(),
             "keyphrase"
         );
     }
@@ -232,7 +242,13 @@ mod tests {
         let pass = "pass";
 
         let mut vault = Vault::default();
-        vault.set("a@b", Secret { password: "x".into(), key_passphrase: HashMap::new() });
+        vault.set(
+            "a@b",
+            Secret {
+                password: "x".into(),
+                key_passphrase: HashMap::new(),
+            },
+        );
         save_with_path(&vault, pass, &path).unwrap();
 
         let mut loaded = load_with_path(pass, &path).unwrap();
@@ -293,7 +309,13 @@ mod tests {
         assert!(load_with_path("pass2", &path).is_err());
 
         let mut vault = Vault::default();
-        vault.set("x@y", Secret { password: "z".into(), key_passphrase: HashMap::new() });
+        vault.set(
+            "x@y",
+            Secret {
+                password: "z".into(),
+                key_passphrase: HashMap::new(),
+            },
+        );
         save_with_path(&vault, "pass2", &path).unwrap();
         assert!(load_with_path("pass1", &path).is_err());
         let loaded = load_with_path("pass2", &path).unwrap();
@@ -306,12 +328,21 @@ mod tests {
         let path = test_vault_path(tmp.path());
 
         let mut vault = Vault::default();
-        vault.set("a@b", Secret { password: "secret_password".into(), key_passphrase: HashMap::new() });
+        vault.set(
+            "a@b",
+            Secret {
+                password: "secret_password".into(),
+                key_passphrase: HashMap::new(),
+            },
+        );
         save_with_path(&vault, "pass", &path).unwrap();
 
         let raw = fs::read(&path).unwrap();
         let as_str = String::from_utf8_lossy(&raw);
-        assert!(!as_str.contains("secret_password"), "vault contains plaintext password!");
+        assert!(
+            !as_str.contains("secret_password"),
+            "vault contains plaintext password!"
+        );
         assert!(!as_str.contains("a@b"), "vault contains plaintext host_id!");
     }
 
@@ -321,11 +352,23 @@ mod tests {
         let path = test_vault_path(tmp.path());
 
         let mut v1 = Vault::default();
-        v1.set("a@b", Secret { password: "first".into(), key_passphrase: HashMap::new() });
+        v1.set(
+            "a@b",
+            Secret {
+                password: "first".into(),
+                key_passphrase: HashMap::new(),
+            },
+        );
         save_with_path(&v1, "pass", &path).unwrap();
 
         let mut v2 = load_with_path("pass", &path).unwrap();
-        v2.set("a@b", Secret { password: "second".into(), key_passphrase: HashMap::new() });
+        v2.set(
+            "a@b",
+            Secret {
+                password: "second".into(),
+                key_passphrase: HashMap::new(),
+            },
+        );
         save_with_path(&v2, "pass", &path).unwrap();
 
         let loaded = load_with_path("pass", &path).unwrap();
@@ -341,7 +384,9 @@ mod tests {
         let mut nonce_bytes = [0u8; NONCE_LEN];
         OsRng.fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
-        let ciphertext = cipher.encrypt(nonce, plaintext.as_ref()).map_err(|e| anyhow!("enc: {}", e))?;
+        let ciphertext = cipher
+            .encrypt(nonce, plaintext.as_ref())
+            .map_err(|e| anyhow!("enc: {}", e))?;
 
         let mut out = Vec::with_capacity(4 + 1 + SALT_LEN + NONCE_LEN + ciphertext.len());
         out.extend_from_slice(MAGIC);

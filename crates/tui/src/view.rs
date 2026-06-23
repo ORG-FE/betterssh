@@ -1,10 +1,12 @@
-use crate::state::{SftpPane, SftpState, Toast, MsgLevel, HostStatus};
+use crate::state::{HostStatus, MsgLevel, SftpPane, SftpState, Toast};
 use crate::theme::Theme;
 use betterssh_core::{Host, Snippet};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Cell, Clear, List, ListItem, ListState, Paragraph, Row, Table, Wrap};
+use ratatui::widgets::{
+    Block, BorderType, Borders, Cell, Clear, List, ListItem, ListState, Paragraph, Row, Table, Wrap,
+};
 use ratatui::Frame;
 use std::collections::{HashMap, HashSet};
 
@@ -40,7 +42,6 @@ pub fn draw_host_list(
     };
 
     let items: Vec<ListItem> = if group_mode {
-        
         filtered.sort_by(|a, b| {
             let ga = a.group.as_deref().unwrap_or("");
             let gb = b.group.as_deref().unwrap_or("");
@@ -53,21 +54,19 @@ pub fn draw_host_list(
         for h in &filtered {
             let grp = h.group.as_deref().unwrap_or("ungrouped").to_string();
 
-            
             if collapsed_groups.contains(&grp) {
                 continue;
             }
 
             if current_group.as_deref() != Some(&grp) {
-                
                 let collapsed = collapsed_groups.contains(&grp);
                 let g_icon = if collapsed { "\u{25b6}" } else { "\u{25bc}" };
-                list_items.push(ListItem::new(vec![
-                    Line::from(Span::styled(
-                        format!(" {} {} ", g_icon, grp),
-                        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
-                    )),
-                ]));
+                list_items.push(ListItem::new(vec![Line::from(Span::styled(
+                    format!(" {} {} ", g_icon, grp),
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ))]));
                 current_group = Some(grp);
             }
 
@@ -80,8 +79,14 @@ pub fn draw_host_list(
             list_items.push(ListItem::new(Line::from(vec![
                 Span::styled("  ", Style::default()),
                 Span::styled(format!(" {} ", icon), Style::default().fg(indicator_fg)),
-                Span::styled(format!(" {}", truncate(&h.name, 18)), Style::default().fg(theme.txt)),
-                Span::styled(format!(" {}@{}", h.user, h.addr()), Style::default().fg(theme.dim)),
+                Span::styled(
+                    format!(" {}", truncate(&h.name, 18)),
+                    Style::default().fg(theme.txt),
+                ),
+                Span::styled(
+                    format!(" {}@{}", h.user, h.addr()),
+                    Style::default().fg(theme.dim),
+                ),
             ])));
         }
         list_items
@@ -97,8 +102,14 @@ pub fn draw_host_list(
                 };
                 ListItem::new(Line::from(vec![
                     Span::styled(format!(" {} ", icon), Style::default().fg(indicator_fg)),
-                    Span::styled(format!(" {}", truncate(&h.name, 18)), Style::default().fg(theme.txt)),
-                    Span::styled(format!(" {}@{}", h.user, h.addr()), Style::default().fg(theme.dim)),
+                    Span::styled(
+                        format!(" {}", truncate(&h.name, 18)),
+                        Style::default().fg(theme.txt),
+                    ),
+                    Span::styled(
+                        format!(" {}@{}", h.user, h.addr()),
+                        Style::default().fg(theme.dim),
+                    ),
                 ]))
             })
             .collect()
@@ -180,7 +191,13 @@ pub fn draw_terminal(
     f.render_widget(status_line, chunks[1]);
 }
 
-pub fn draw_status_bar(f: &mut Frame, area: Rect, theme: &Theme, hints: &[(&str, &str)], msg: Option<&str>) {
+pub fn draw_status_bar(
+    f: &mut Frame,
+    area: Rect,
+    theme: &Theme,
+    hints: &[(&str, &str)],
+    msg: Option<&str>,
+) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(1), Constraint::Length(40)])
@@ -189,7 +206,10 @@ pub fn draw_status_bar(f: &mut Frame, area: Rect, theme: &Theme, hints: &[(&str,
     let mut spans: Vec<Span> = Vec::new();
     for (i, (k, v)) in hints.iter().enumerate() {
         if i > 0 {
-            spans.push(Span::styled(" \u{2502} ", Style::default().fg(theme.border)));
+            spans.push(Span::styled(
+                " \u{2502} ",
+                Style::default().fg(theme.border),
+            ));
         }
         spans.push(Span::styled(
             format!(" {}", k),
@@ -236,23 +256,16 @@ pub fn draw_prompt(
 
     let label_span = Span::styled(
         format!(" {} ", label),
-        Style::default().fg(theme.bg).bg(theme.accent2).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme.bg)
+            .bg(theme.accent2)
+            .add_modifier(Modifier::BOLD),
     );
-    let value_span = Span::styled(
-        value.to_string(),
-        Style::default().fg(theme.txt),
-    );
+    let value_span = Span::styled(value.to_string(), Style::default().fg(theme.txt));
     let cursor_x = label.len() + 3 + cursor;
 
-    let line = Line::from(vec![
-        label_span,
-        Span::raw(" "),
-        value_span,
-    ]);
-    f.render_widget(
-        Paragraph::new(line),
-        inner,
-    );
+    let line = Line::from(vec![label_span, Span::raw(" "), value_span]);
+    f.render_widget(Paragraph::new(line), inner);
     f.set_cursor_position((inner.x + cursor_x as u16, inner.y));
 }
 
@@ -267,7 +280,10 @@ pub fn draw_connecting(f: &mut Frame, area: Rect, theme: &Theme, host: &str) {
     f.render_widget(block, area);
     let text = Line::from(vec![
         Span::styled("Connecting to ", Style::default().fg(theme.dim)),
-        Span::styled(host, Style::default().fg(theme.txt).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            host,
+            Style::default().fg(theme.txt).add_modifier(Modifier::BOLD),
+        ),
         Span::styled(" ...", Style::default().fg(theme.dim)),
     ]);
     f.render_widget(
@@ -286,11 +302,7 @@ pub fn draw_table(
     widths: &[Constraint],
 ) {
     let header = Row::new(headers.iter().map(|h| {
-        Cell::from(*h).style(
-            Style::default()
-                .fg(theme.dim)
-                .add_modifier(Modifier::BOLD),
-        )
+        Cell::from(*h).style(Style::default().fg(theme.dim).add_modifier(Modifier::BOLD))
     }))
     .style(Style::default().bg(theme.panel2));
 
@@ -299,18 +311,16 @@ pub fn draw_table(
         .map(|r| Row::new(r.iter().map(|c| Cell::from(c.as_str()))))
         .collect();
 
-    let t = Table::new(body, widths.to_vec())
-        .header(header)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(theme.border2))
-                .title(Span::styled(
-                    format!(" {} ", title),
-                    Style::default().fg(theme.dim),
-                )),
-        );
+    let t = Table::new(body, widths.to_vec()).header(header).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(theme.border2))
+            .title(Span::styled(
+                format!(" {} ", title),
+                Style::default().fg(theme.dim),
+            )),
+    );
     f.render_widget(t, area);
 }
 
@@ -348,9 +358,16 @@ pub fn draw_sftp(f: &mut Frame, area: Rect, theme: &Theme, sftp: &SftpState) {
 
 fn draw_sftp_pane(f: &mut Frame, area: Rect, theme: &Theme, sftp: &SftpState, pane: SftpPane) {
     let focused = sftp.focus == pane;
-    let border_color = if focused { theme.accent2 } else { theme.border2 };
+    let border_color = if focused {
+        theme.accent2
+    } else {
+        theme.border2
+    };
     let path_str = sftp.pane_path(pane).display();
-    let pane_icon = match pane { SftpPane::Local => "\u{25c9}", SftpPane::Remote => "\u{25b6}" };
+    let pane_icon = match pane {
+        SftpPane::Local => "\u{25c9}",
+        SftpPane::Remote => "\u{25b6}",
+    };
     let title = format!(" {} {} ", pane_icon, path_str);
     let block = Block::default()
         .borders(Borders::ALL)
@@ -404,10 +421,7 @@ fn draw_sftp_pane(f: &mut Frame, area: Rect, theme: &Theme, sftp: &SftpState, pa
 
     let table = Table::new(
         rows,
-        vec![
-            Constraint::Percentage(70),
-            Constraint::Length(10),
-        ],
+        vec![Constraint::Percentage(70), Constraint::Length(10)],
     )
     .header(header)
     .column_spacing(1)
@@ -440,7 +454,10 @@ pub fn draw_snippets_bar(f: &mut Frame, area: Rect, theme: &Theme, snippets: &[S
     for (i, s) in snippets.iter().take(9).enumerate() {
         let label = format!(" {} ", i + 1);
         let name = format!(" {} ", s.name);
-        spans.push(Span::styled(label, Style::default().fg(theme.bg).bg(theme.accent)));
+        spans.push(Span::styled(
+            label,
+            Style::default().fg(theme.bg).bg(theme.accent),
+        ));
         spans.push(Span::styled(name, Style::default().fg(theme.txt)));
     }
     let line = Line::from(spans);
@@ -468,7 +485,12 @@ pub fn popup_area(area: Rect, pct_x: u16, pct_y: u16) -> Rect {
     h[1]
 }
 
-pub fn draw_toasts(f: &mut Frame, area: Rect, theme: &Theme, toasts: &std::collections::VecDeque<Toast>) {
+pub fn draw_toasts(
+    f: &mut Frame,
+    area: Rect,
+    theme: &Theme,
+    toasts: &std::collections::VecDeque<Toast>,
+) {
     if toasts.is_empty() {
         return;
     }
@@ -505,8 +527,7 @@ pub fn draw_toasts(f: &mut Frame, area: Rect, theme: &Theme, toasts: &std::colle
             Style::default().fg(color).bg(theme.surface),
         )));
     }
-    let p = Paragraph::new(lines)
-        .style(Style::default().bg(theme.surface));
+    let p = Paragraph::new(lines).style(Style::default().bg(theme.surface));
     f.render_widget(Clear, toast_area);
     f.render_widget(p, toast_area);
 }

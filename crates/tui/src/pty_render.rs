@@ -131,13 +131,22 @@ impl TerminalView {
                         c.bold(),
                         c.inverse(),
                     ),
-                    None => (' ', vt100::Color::Default, vt100::Color::Default, false, false),
+                    None => (
+                        ' ',
+                        vt100::Color::Default,
+                        vt100::Color::Default,
+                        false,
+                        false,
+                    ),
                 };
 
                 let w = ch.width().unwrap_or(0);
                 let style = to_style(fg, bg, bold, reverse, theme);
                 if style != current_style && !current_text.is_empty() {
-                    spans.push(Span::styled(std::mem::take(&mut current_text), current_style));
+                    spans.push(Span::styled(
+                        std::mem::take(&mut current_text),
+                        current_style,
+                    ));
                 }
                 current_style = style;
                 if w == 0 {
@@ -154,7 +163,6 @@ impl TerminalView {
     }
 
     fn render_scrollback(&self, theme: &Theme) -> Vec<Line<'static>> {
-        
         let screen = self.parser.screen();
         let total = screen.scrollback() + self.rows as usize;
         let want_from = total.saturating_sub(self.rows as usize + self.scroll_offset as usize);
@@ -176,13 +184,22 @@ impl TerminalView {
                         c.bold(),
                         c.inverse(),
                     ),
-                    None => (' ', vt100::Color::Default, vt100::Color::Default, false, false),
+                    None => (
+                        ' ',
+                        vt100::Color::Default,
+                        vt100::Color::Default,
+                        false,
+                        false,
+                    ),
                 };
 
                 let w = ch.width().unwrap_or(0);
                 let style = to_style(fg, bg, bold, reverse, theme);
                 if style != current_style && !current_text.is_empty() {
-                    spans.push(Span::styled(std::mem::take(&mut current_text), current_style));
+                    spans.push(Span::styled(
+                        std::mem::take(&mut current_text),
+                        current_style,
+                    ));
                 }
                 current_style = style;
                 if w == 0 {

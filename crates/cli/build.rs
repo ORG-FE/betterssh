@@ -1,6 +1,9 @@
 fn main() {
     if let Ok(ver) = std::env::var("RELEASE_VERSION") {
-        println!("cargo:rustc-env=CARGO_PKG_VERSION={}", ver.trim_start_matches('v'));
+        println!(
+            "cargo:rustc-env=CARGO_PKG_VERSION={}",
+            ver.trim_start_matches('v')
+        );
         return;
     }
 
@@ -10,7 +13,10 @@ fn main() {
     {
         if output.status.success() {
             let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            println!("cargo:rustc-env=CARGO_PKG_VERSION={}", ver.trim_start_matches('v'));
+            println!(
+                "cargo:rustc-env=CARGO_PKG_VERSION={}",
+                ver.trim_start_matches('v')
+            );
             return;
         }
     }

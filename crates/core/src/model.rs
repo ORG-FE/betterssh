@@ -47,8 +47,13 @@ impl Host {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Identity {
-    Key { path: String, passphrase: Option<String> },
-    Password { from_agent: Option<bool> },
+    Key {
+        path: String,
+        passphrase: Option<String>,
+    },
+    Password {
+        from_agent: Option<bool>,
+    },
     Agent,
 }
 
@@ -139,8 +144,12 @@ pub struct PortForward {
     pub active: bool,
 }
 
-fn default_listen_addr() -> String { "127.0.0.1".into() }
-fn default_listen_port() -> u16 { 8080 }
+fn default_listen_addr() -> String {
+    "127.0.0.1".into()
+}
+fn default_listen_port() -> u16 {
+    8080
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
@@ -174,20 +183,48 @@ pub struct Settings {
     pub macros: Vec<Macro>,
 }
 
-fn default_keepalive() -> u16 { 30 }
-fn default_term_cols() -> u16 { 120 }
-fn default_term_rows() -> u16 { 32 }
-fn default_term() -> String { "xterm-256color".into() }
-fn default_log_lines() -> usize { 1000 }
-fn default_theme() -> String { "default".into() }
-fn default_default_user() -> String { "root".into() }
-fn default_ping_check() -> bool { true }
-fn default_auto_reconnect() -> bool { false }
-fn default_scrollback() -> usize { 5000 }
-fn default_mouse() -> bool { false }
-fn default_show_metrics() -> bool { true }
-fn default_keybindings() -> HashMap<String, String> { HashMap::new() }
-fn default_macros() -> Vec<Macro> { Vec::new() }
+fn default_keepalive() -> u16 {
+    30
+}
+fn default_term_cols() -> u16 {
+    120
+}
+fn default_term_rows() -> u16 {
+    32
+}
+fn default_term() -> String {
+    "xterm-256color".into()
+}
+fn default_log_lines() -> usize {
+    1000
+}
+fn default_theme() -> String {
+    "default".into()
+}
+fn default_default_user() -> String {
+    "root".into()
+}
+fn default_ping_check() -> bool {
+    true
+}
+fn default_auto_reconnect() -> bool {
+    false
+}
+fn default_scrollback() -> usize {
+    5000
+}
+fn default_mouse() -> bool {
+    false
+}
+fn default_show_metrics() -> bool {
+    true
+}
+fn default_keybindings() -> HashMap<String, String> {
+    HashMap::new()
+}
+fn default_macros() -> Vec<Macro> {
+    Vec::new()
+}
 
 #[cfg(test)]
 mod tests {

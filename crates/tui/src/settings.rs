@@ -1,11 +1,11 @@
 use crate::theme::{self, Theme};
 use betterssh_core::Settings;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use ratatui::Frame;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone)]
@@ -88,43 +88,57 @@ impl SettingsFocus {
             },
             SettingsSection {
                 title: "Appearance",
-                fields: vec![
-                    SettingsField {
-                        label: "Theme",
-                        value: settings.theme.clone(),
-                        kind: FieldKind::Select(all_themes),
-                        key: "theme".into(),
-                        desc: "color theme (live reload)",
-                    },
-                ],
+                fields: vec![SettingsField {
+                    label: "Theme",
+                    value: settings.theme.clone(),
+                    kind: FieldKind::Select(all_themes),
+                    key: "theme".into(),
+                    desc: "color theme (live reload)",
+                }],
             },
             SettingsSection {
                 title: "Behaviour",
                 fields: vec![
                     SettingsField {
                         label: "Ping on startup",
-                        value: if settings.ping_check { "yes".into() } else { "no".into() },
+                        value: if settings.ping_check {
+                            "yes".into()
+                        } else {
+                            "no".into()
+                        },
                         kind: FieldKind::Bool,
                         key: "ping_check".into(),
                         desc: "check host reachability",
                     },
                     SettingsField {
                         label: "Auto reconnect",
-                        value: if settings.auto_reconnect { "yes".into() } else { "no".into() },
+                        value: if settings.auto_reconnect {
+                            "yes".into()
+                        } else {
+                            "no".into()
+                        },
                         kind: FieldKind::Bool,
                         key: "auto_reconnect".into(),
                         desc: "reconnect on disconnect",
                     },
                     SettingsField {
                         label: "Mouse forwarding",
-                        value: if settings.mouse { "yes".into() } else { "no".into() },
+                        value: if settings.mouse {
+                            "yes".into()
+                        } else {
+                            "no".into()
+                        },
                         kind: FieldKind::Bool,
                         key: "mouse".into(),
                         desc: "enable mouse in terminal",
                     },
                     SettingsField {
                         label: "Show metrics",
-                        value: if settings.show_metrics { "yes".into() } else { "no".into() },
+                        value: if settings.show_metrics {
+                            "yes".into()
+                        } else {
+                            "no".into()
+                        },
                         kind: FieldKind::Bool,
                         key: "show_metrics".into(),
                         desc: "show CPU/RAM/disk bar",
@@ -183,7 +197,9 @@ impl SettingsFocus {
     fn section_start(&self, target_section: usize) -> usize {
         let mut idx = 0;
         for (si, sec) in self.sections.iter().enumerate() {
-            if si == target_section { return idx; }
+            if si == target_section {
+                return idx;
+            }
             idx += sec.fields.len();
         }
         idx
@@ -203,16 +219,27 @@ impl SettingsFocus {
     pub fn apply(&self, settings: &mut Settings) {
         for sec in &self.sections {
             for f in &sec.fields {
-                if f.key == "default_user" { settings.default_user = f.value.clone(); }
-                else if f.key == "keepalive_secs" { settings.keepalive_secs = f.value.parse().unwrap_or(30); }
-                else if f.key == "term_type" { settings.term_type = f.value.clone(); }
-                else if f.key == "scrollback" { settings.scrollback = f.value.parse().unwrap_or(5000); }
-                else if f.key == "log_lines" { settings.log_lines = f.value.parse().unwrap_or(1000); }
-                else if f.key == "theme" { settings.theme = f.value.clone(); }
-                else if f.key == "ping_check" { settings.ping_check = f.value == "yes"; }
-                else if f.key == "auto_reconnect" { settings.auto_reconnect = f.value == "yes"; }
-                else if f.key == "mouse" { settings.mouse = f.value == "yes"; }
-                else if f.key == "show_metrics" { settings.show_metrics = f.value == "yes"; }
+                if f.key == "default_user" {
+                    settings.default_user = f.value.clone();
+                } else if f.key == "keepalive_secs" {
+                    settings.keepalive_secs = f.value.parse().unwrap_or(30);
+                } else if f.key == "term_type" {
+                    settings.term_type = f.value.clone();
+                } else if f.key == "scrollback" {
+                    settings.scrollback = f.value.parse().unwrap_or(5000);
+                } else if f.key == "log_lines" {
+                    settings.log_lines = f.value.parse().unwrap_or(1000);
+                } else if f.key == "theme" {
+                    settings.theme = f.value.clone();
+                } else if f.key == "ping_check" {
+                    settings.ping_check = f.value == "yes";
+                } else if f.key == "auto_reconnect" {
+                    settings.auto_reconnect = f.value == "yes";
+                } else if f.key == "mouse" {
+                    settings.mouse = f.value == "yes";
+                } else if f.key == "show_metrics" {
+                    settings.show_metrics = f.value == "yes";
+                }
             }
         }
     }
@@ -223,7 +250,11 @@ impl SettingsFocus {
             for f in &mut sec.fields {
                 if i == idx {
                     if matches!(f.kind, FieldKind::Bool) {
-                        f.value = if f.value == "yes" { "no".into() } else { "yes".into() };
+                        f.value = if f.value == "yes" {
+                            "no".into()
+                        } else {
+                            "yes".into()
+                        };
                         self.modified = true;
                     }
                     return;
@@ -256,7 +287,8 @@ impl SettingsFocus {
                 if i == idx {
                     if let FieldKind::Select(ref options) = f.kind {
                         if let Some(pos) = options.iter().position(|o| o == &f.value) {
-                            let next = ((pos as i32 + dir).rem_euclid(options.len() as i32)) as usize;
+                            let next =
+                                ((pos as i32 + dir).rem_euclid(options.len() as i32)) as usize;
                             f.value = options[next].clone();
                             self.modified = true;
                         } else if !options.is_empty() {
@@ -323,7 +355,7 @@ impl SettingsFocus {
         match k.code {
             KeyCode::Up | KeyCode::Char('k') => {
                 self.cycle_field(self.cursor, -1);
-                
+
                 if self.cursor_row() < self.scroll_offset {
                     self.scroll_offset = self.cursor_row();
                 }
@@ -357,7 +389,7 @@ impl SettingsFocus {
             }
             KeyCode::End => {
                 self.cursor = self.total_fields().saturating_sub(1);
-                self.scroll_offset = usize::MAX; 
+                self.scroll_offset = usize::MAX;
             }
             KeyCode::Enter => {
                 if let Some(f) = self.field_at(self.cursor) {
@@ -401,7 +433,9 @@ impl SettingsFocus {
         let mut i = 0;
         for sec in &self.sections {
             for f in &sec.fields {
-                if i == idx { return Some(f); }
+                if i == idx {
+                    return Some(f);
+                }
                 i += 1;
             }
         }
@@ -433,7 +467,13 @@ pub enum SettingsAction {
     AddMacro,
 }
 
-pub fn draw_settings(f: &mut Frame, area: Rect, s: &mut SettingsFocus, theme: &Theme, confirm_discard: bool) {
+pub fn draw_settings(
+    f: &mut Frame,
+    area: Rect,
+    s: &mut SettingsFocus,
+    theme: &Theme,
+    confirm_discard: bool,
+) {
     let popup = centered_rect(area, 62, 72);
     let block = Block::default()
         .borders(Borders::ALL)
@@ -460,11 +500,14 @@ pub fn draw_settings(f: &mut Frame, area: Rect, s: &mut SettingsFocus, theme: &T
 
     for (si, sec) in s.sections.iter().enumerate() {
         let is_active_section = si == cursor_sec;
-        let sec_color = if is_active_section { theme.accent } else { theme.dim };
+        let sec_color = if is_active_section {
+            theme.accent
+        } else {
+            theme.dim
+        };
         let is_about = sec.title == "About";
 
         if is_about {
-            
             let phase = animation_phase(3000);
             let nick_color = cycle_color(theme.accent2, theme.accent, theme.good, phase);
 
@@ -479,7 +522,10 @@ pub fn draw_settings(f: &mut Frame, area: Rect, s: &mut SettingsFocus, theme: &T
             rows.push(Line::from(""));
             rows.push(Line::from(vec![
                 Span::styled(" ".repeat(pad), Style::default()),
-                Span::styled("About", Style::default().fg(sec_color).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "About",
+                    Style::default().fg(sec_color).add_modifier(Modifier::BOLD),
+                ),
             ]));
             rows.push(Line::from(""));
 
@@ -488,18 +534,31 @@ pub fn draw_settings(f: &mut Frame, area: Rect, s: &mut SettingsFocus, theme: &T
                 Span::styled("Made with ", Style::default().fg(theme.dim)),
                 Span::styled("\u{2665}", Style::default().fg(theme.warn)),
                 Span::styled(" by ", Style::default().fg(theme.dim)),
-                Span::styled("project-fe.dev", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "project-fe.dev",
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ),
             ]));
             rows.push(Line::from(""));
             rows.push(Line::from(vec![
                 Span::styled(" ".repeat(pad), Style::default()),
                 Span::styled("Main developer: ", Style::default().fg(theme.dim)),
-                Span::styled("c0redev", Style::default().fg(nick_color).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "c0redev",
+                    Style::default().fg(nick_color).add_modifier(Modifier::BOLD),
+                ),
             ]));
             rows.push(Line::from(vec![
                 Span::styled(" ".repeat(pad), Style::default()),
                 Span::styled("Website: ", Style::default().fg(theme.dim)),
-                Span::styled("unitdev.run", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "unitdev.run",
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ),
             ]));
             rows.push(Line::from(""));
             continue;
@@ -520,7 +579,13 @@ pub fn draw_settings(f: &mut Frame, area: Rect, s: &mut SettingsFocus, theme: &T
 
             let indicator = match f.kind {
                 FieldKind::Text | FieldKind::Number => "▸",
-                FieldKind::Bool => if f.value == "yes" { "✓" } else { "✗" },
+                FieldKind::Bool => {
+                    if f.value == "yes" {
+                        "✓"
+                    } else {
+                        "✗"
+                    }
+                }
                 FieldKind::Select(_) => "►",
                 _ => "",
             };
@@ -530,7 +595,12 @@ pub fn draw_settings(f: &mut Frame, area: Rect, s: &mut SettingsFocus, theme: &T
                 _ => theme.accent,
             };
 
-            let label_w = sec.fields.iter().map(|ff| ff.label.len()).max().unwrap_or(20);
+            let label_w = sec
+                .fields
+                .iter()
+                .map(|ff| ff.label.len())
+                .max()
+                .unwrap_or(20);
             let padding = " ".repeat(label_w.saturating_sub(f.label.len()) + 1);
 
             let val = if editing {
@@ -563,7 +633,8 @@ pub fn draw_settings(f: &mut Frame, area: Rect, s: &mut SettingsFocus, theme: &T
                 if editing {
                     row_style = row_style.add_modifier(Modifier::SLOW_BLINK);
                 }
-                let highlighted: Vec<Span> = line_spans.into_iter()
+                let highlighted: Vec<Span> = line_spans
+                    .into_iter()
                     .map(|sp| Span::styled(sp.content.clone(), sp.style.patch(row_style)))
                     .collect();
                 rows.push(Line::from(highlighted));
@@ -575,11 +646,11 @@ pub fn draw_settings(f: &mut Frame, area: Rect, s: &mut SettingsFocus, theme: &T
         rows.push(Line::from(""));
     }
 
-    
     let theme_idx = s.field_index_by_key("theme");
     if let Some(ti) = theme_idx {
         if cursor_sec == s.section_of(ti) {
-            let preview_theme = theme::load_theme(&s.field_value_by_key("theme").unwrap_or_default());
+            let preview_theme =
+                theme::load_theme(&s.field_value_by_key("theme").unwrap_or_default());
             let swatches = theme_swatches(&preview_theme);
             for swatch_line in swatches {
                 rows.push(swatch_line);
@@ -589,10 +660,13 @@ pub fn draw_settings(f: &mut Frame, area: Rect, s: &mut SettingsFocus, theme: &T
     }
 
     let visible = body_area.height as usize;
-    
+
     let cursor_row = s.cursor_row();
-    
-    if s.sections.get(cursor_sec).is_some_and(|sec| sec.title == "About") {
+
+    if s.sections
+        .get(cursor_sec)
+        .is_some_and(|sec| sec.title == "About")
+    {
         s.scroll_offset = rows.len().saturating_sub(visible);
     } else {
         if cursor_row >= s.scroll_offset + visible {
@@ -609,10 +683,12 @@ pub fn draw_settings(f: &mut Frame, area: Rect, s: &mut SettingsFocus, theme: &T
         .style(Style::default().bg(theme.bg));
     f.render_widget(p, body_area);
 
-    
     let footer = if confirm_discard {
         Line::from(vec![
-            Span::styled(" Discard changes? ", Style::default().fg(theme.warn).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " Discard changes? ",
+                Style::default().fg(theme.warn).add_modifier(Modifier::BOLD),
+            ),
             Span::styled("y", Style::default().fg(theme.good)),
             Span::styled("/", Style::default().fg(theme.dim)),
             Span::styled("N", Style::default().fg(theme.bad)),
@@ -637,30 +713,46 @@ pub fn draw_settings(f: &mut Frame, area: Rect, s: &mut SettingsFocus, theme: &T
             Span::styled(" close", Style::default().fg(theme.dim)),
         ])
     };
-    f.render_widget(Paragraph::new(footer).style(Style::default().bg(theme.bg)), footer_area);
+    f.render_widget(
+        Paragraph::new(footer).style(Style::default().bg(theme.bg)),
+        footer_area,
+    );
 }
 
 fn theme_swatches(t: &Theme) -> Vec<Line<'static>> {
     let pairs = [
-        ("bg", t.bg), ("pnl", t.panel), ("p2", t.panel2),
-        ("bdr", t.border), ("bd2", t.border2),
-        ("txt", t.txt), ("dim", t.dim),
-        ("acc", t.accent), ("ac2", t.accent2),
-        ("ok", t.good), ("warn", t.warn), ("bad", t.bad),
-        ("sb", t.sel_bg), ("sf", t.sel_fg),
-        ("surf", t.surface), ("ovl", t.overlay),
+        ("bg", t.bg),
+        ("pnl", t.panel),
+        ("p2", t.panel2),
+        ("bdr", t.border),
+        ("bd2", t.border2),
+        ("txt", t.txt),
+        ("dim", t.dim),
+        ("acc", t.accent),
+        ("ac2", t.accent2),
+        ("ok", t.good),
+        ("warn", t.warn),
+        ("bad", t.bad),
+        ("sb", t.sel_bg),
+        ("sf", t.sel_fg),
+        ("surf", t.surface),
+        ("ovl", t.overlay),
     ];
 
     let mut lines = Vec::new();
-    lines.push(Line::from(vec![
-        Span::styled("  ── Theme Preview ──", Style::default().fg(t.dim)),
-    ]));
+    lines.push(Line::from(vec![Span::styled(
+        "  ── Theme Preview ──",
+        Style::default().fg(t.dim),
+    )]));
 
     for chunk in pairs.chunks(8) {
         let mut spans = vec![Span::styled("  ", Style::default())];
         for (label, color) in chunk {
             let text_color = if is_dark(*color) { t.txt } else { t.bg };
-            spans.push(Span::styled("██", Style::default().bg(*color).fg(text_color)));
+            spans.push(Span::styled(
+                "██",
+                Style::default().bg(*color).fg(text_color),
+            ));
             spans.push(Span::styled(
                 format!(" {} ", label),
                 Style::default().fg(t.dim),
@@ -681,11 +773,24 @@ fn is_dark(c: ratatui::style::Color) -> bool {
 }
 
 fn centered_rect(area: Rect, pct_x: u16, pct_y: u16) -> Rect {
-    let w = area.width.saturating_mul(pct_x.min(100)).saturating_div(100).max(44);
-    let h = area.height.saturating_mul(pct_y.min(100)).saturating_div(100).max(12);
+    let w = area
+        .width
+        .saturating_mul(pct_x.min(100))
+        .saturating_div(100)
+        .max(44);
+    let h = area
+        .height
+        .saturating_mul(pct_y.min(100))
+        .saturating_div(100)
+        .max(12);
     let x = area.width.saturating_sub(w).saturating_div(2);
     let y = area.height.saturating_sub(h).saturating_div(2);
-    Rect { x: x.saturating_add(area.x), y: y.saturating_add(area.y), width: w, height: h }
+    Rect {
+        x: x.saturating_add(area.x),
+        y: y.saturating_add(area.y),
+        width: w,
+        height: h,
+    }
 }
 
 fn animation_phase(period_ms: u64) -> f64 {
@@ -708,8 +813,7 @@ fn lerp_color(a: Color, b: Color, t: f64) -> Color {
 }
 
 fn cycle_color(a: Color, b: Color, c: Color, phase: f64) -> Color {
-    
-    let p = phase * 3.0; 
+    let p = phase * 3.0;
     if p < 1.0 {
         lerp_color(a, b, p)
     } else if p < 2.0 {
@@ -728,8 +832,11 @@ fn rgb_parts(c: Color) -> (u8, u8, u8) {
 
 fn build_keybinding_fields(settings: &Settings) -> Vec<SettingsField> {
     let mut fields = Vec::new();
-    let mut entries: Vec<(String, String)> = settings.keybindings.iter()
-        .map(|(k, v)| (k.clone(), v.clone())).collect();
+    let mut entries: Vec<(String, String)> = settings
+        .keybindings
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
     entries.sort_by(|a, b| a.0.cmp(&b.0));
     for (i, (action, combo)) in entries.iter().enumerate() {
         fields.push(SettingsField {
@@ -775,7 +882,9 @@ fn build_macro_fields(settings: &Settings) -> Vec<SettingsField> {
 impl SettingsFocus {
     pub fn rebuild_section(&mut self, title: &str, settings: &Settings) {
         for sec in &mut self.sections {
-            if sec.title != title { continue; }
+            if sec.title != title {
+                continue;
+            }
             sec.fields = match title {
                 "Keybindings" => build_keybinding_fields(settings),
                 "Macros" => build_macro_fields(settings),
@@ -789,7 +898,9 @@ impl SettingsFocus {
         let mut i = 0;
         for sec in &self.sections {
             for f in &sec.fields {
-                if f.key == key { return Some(i); }
+                if f.key == key {
+                    return Some(i);
+                }
                 i += 1;
             }
         }
@@ -799,7 +910,9 @@ impl SettingsFocus {
     fn section_of(&self, field_idx: usize) -> usize {
         let mut rem = field_idx;
         for (si, sec) in self.sections.iter().enumerate() {
-            if rem < sec.fields.len() { return si; }
+            if rem < sec.fields.len() {
+                return si;
+            }
             rem -= sec.fields.len();
         }
         0
@@ -808,7 +921,9 @@ impl SettingsFocus {
     fn field_value_by_key(&self, key: &str) -> Option<String> {
         for sec in &self.sections {
             for f in &sec.fields {
-                if f.key == key { return Some(f.value.clone()); }
+                if f.key == key {
+                    return Some(f.value.clone());
+                }
             }
         }
         None

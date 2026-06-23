@@ -68,9 +68,7 @@ fn fetch_latest() -> Result<String, String> {
         .set("User-Agent", "betterssh-update")
         .call()
         .map_err(|e| format!("http: {}", e))?;
-    let json: serde_json::Value = resp
-        .into_json()
-        .map_err(|e| format!("json: {}", e))?;
+    let json: serde_json::Value = resp.into_json().map_err(|e| format!("json: {}", e))?;
     let tag = json["tag_name"]
         .as_str()
         .ok_or_else(|| String::from("no tag_name"))?
@@ -128,18 +126,15 @@ fn inner_install() -> Result<(), String> {
         .call()
         .map_err(|e| format!("download: {}", e))?;
     let mut reader = resp.into_reader();
-    let mut out =
-        std::fs::File::create(&bin_path).map_err(|e| format!("create: {}", e))?;
+    let mut out = std::fs::File::create(&bin_path).map_err(|e| format!("create: {}", e))?;
     std::io::copy(&mut reader, &mut out).map_err(|e| format!("copy: {}", e))?;
     drop(out);
 
-    let current_exe =
-        std::env::current_exe().map_err(|e| format!("current_exe: {}", e))?;
+    let current_exe = std::env::current_exe().map_err(|e| format!("current_exe: {}", e))?;
 
     #[cfg(unix)]
     {
-        let data =
-            std::fs::read(&bin_path).map_err(|e| format!("read new: {}", e))?;
+        let data = std::fs::read(&bin_path).map_err(|e| format!("read new: {}", e))?;
         std::fs::write(&current_exe, &data).map_err(|e| format!("write: {}", e))?;
         std::fs::set_permissions(
             &current_exe,
@@ -152,8 +147,7 @@ fn inner_install() -> Result<(), String> {
     {
         let tmp = current_exe.with_extension("old.exe");
         std::fs::rename(&current_exe, &tmp).map_err(|e| format!("backup: {}", e))?;
-        std::fs::rename(&bin_path, &current_exe)
-            .map_err(|e| format!("replace: {}", e))?;
+        std::fs::rename(&bin_path, &current_exe).map_err(|e| format!("replace: {}", e))?;
         let _ = std::fs::remove_file(&tmp);
     }
 
@@ -173,5 +167,3 @@ fn target_triple() -> Result<String, String> {
         _ => Err(format!("unsupported: {}-{}", os, arch)),
     }
 }
-
-
