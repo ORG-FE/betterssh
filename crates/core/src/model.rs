@@ -100,8 +100,9 @@ pub struct Macro {
     pub key: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ForwardDirection {
+    #[default]
     #[serde(rename = "local")]
     Local,
     #[serde(rename = "remote")]
@@ -118,10 +119,6 @@ impl std::fmt::Display for ForwardDirection {
             ForwardDirection::Dynamic => write!(f, "-D"),
         }
     }
-}
-
-impl Default for ForwardDirection {
-    fn default() -> Self { ForwardDirection::Local }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

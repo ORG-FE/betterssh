@@ -90,7 +90,7 @@ pub fn parse_ssh_config<P: AsRef<Path>>(path: P) -> Result<Vec<SshConfigEntry>> 
             "include" => {
                 let include_path = expand_tilde(value);
                 if let Ok(mut included) = parse_ssh_config(&include_path) {
-                    entries.extend(included.drain(..));
+                    entries.append(&mut included);
                 }
             }
             _ => {}
@@ -171,9 +171,9 @@ fn trim_comment(line: &str) -> &str {
 }
 
 fn expand_tilde(path: &str) -> PathBuf {
-    if path.starts_with("~/") {
+    if let Some(stripped) = path.strip_prefix("~/") {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
-        PathBuf::from(home).join(&path[2..])
+        PathBuf::from(home).join(stripped)
     } else if path == "~" {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
         PathBuf::from(home)
