@@ -63,15 +63,26 @@ pub fn check_latest() {
 
 fn fetch_latest() -> Result<String, String> {
     let url = format!("https://api.github.com/repos/{}/releases/latest", REPO);
-    let resp = ureq::get(&url)
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(std::time::Duration::from_secs(5))
+        .timeout_read(std::time::Duration::from_secs(10))
+        .build();
+    let resp = agent
+        .get(&url)
         .set("Accept", "application/vnd.github.v3+json")
         .set("User-Agent", "betterssh-update")
         .call()
-        .map_err(|e| format!("http: {}", e))?;
-    let json: serde_json::Value = resp.into_json().map_err(|e| format!("json: {}", e))?;
+        .map_err(|e| {
+            let kind = match &e {
+                ureq::Error::Status(code, _) => format!("status {}", code),
+                ureq::Error::Transport(t) => format!("transport: {}", t.kind()),
+            };
+            kind
+        })?;
+    let json: serde_json::Value = resp.into_json().map_err(|e| format!("json parse: {}", e))?;
     let tag = json["tag_name"]
         .as_str()
-        .ok_or_else(|| String::from("no tag_name"))?
+        .ok_or_else(|| String::from("no tag_name in response"))?
         .trim_start_matches('v')
         .to_string();
     Ok(tag)
