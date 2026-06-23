@@ -11,7 +11,6 @@ fn main() {
         if output.status.success() {
             let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
             println!("cargo:rustc-env=CARGO_PKG_VERSION={}", ver.trim_start_matches('v'));
-            return;
         }
     }
 }
